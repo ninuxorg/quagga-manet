@@ -1457,6 +1457,7 @@ static void
 _netlink_route_build_singlepath(
         const char *routedesc,
         int bytelen,
+        struct rib *rib,
         struct nexthop *nexthop,
         struct nlmsghdr *nlmsg,
         struct rtmsg *rtmsg,
@@ -1505,6 +1506,9 @@ _netlink_route_build_singlepath(
       if (nexthop->src.ipv4.s_addr)
         addattr_l (nlmsg, req_size, RTA_PREFSRC,
                    &nexthop->src.ipv4, bytelen);
+
+      if (rib->type == ZEBRA_ROUTE_OLSR)
+        rtmsg->rtm_scope = RT_SCOPE_LINK;
 
       if (IS_ZEBRA_DEBUG_KERNEL)
         zlog_debug("netlink_route_multipath() (%s): "
@@ -1755,7 +1759,7 @@ netlink_route_multipath (int cmd, struct prefix *p, struct rib *rib,
               routedesc = recursing ? "recursive, 1 hop" : "single hop";
 
               _netlink_route_debug(cmd, p, nexthop, routedesc, family);
-              _netlink_route_build_singlepath(routedesc, bytelen,
+              _netlink_route_build_singlepath(routedesc, bytelen, rib,
                                               nexthop, &req.n, &req.r,
                                               sizeof req);
 

@@ -731,7 +731,10 @@ vty_show_ip_route_detail (struct vty *vty, struct route_node *rn, int mcast)
 	  || rib->type == ZEBRA_ROUTE_OSPF
 	  || rib->type == ZEBRA_ROUTE_BABEL
 	  || rib->type == ZEBRA_ROUTE_ISIS
-	  || rib->type == ZEBRA_ROUTE_BGP)
+	  || rib->type == ZEBRA_ROUTE_BGP
+	  || rib->type == ZEBRA_ROUTE_HSLS
+	  || rib->type == ZEBRA_ROUTE_OLSR
+	  || rib->type == ZEBRA_ROUTE_BATMAN)
 	{
 	  time_t uptime;
 	  struct tm *tm;
@@ -926,7 +929,10 @@ vty_show_ip_route (struct vty *vty, struct route_node *rn, struct rib *rib)
 	  || rib->type == ZEBRA_ROUTE_OSPF
 	  || rib->type == ZEBRA_ROUTE_BABEL
 	  || rib->type == ZEBRA_ROUTE_ISIS
-	  || rib->type == ZEBRA_ROUTE_BGP)
+	  || rib->type == ZEBRA_ROUTE_BGP
+	  || rib->type == ZEBRA_ROUTE_HSLS
+	  || rib->type == ZEBRA_ROUTE_OLSR
+	  || rib->type == ZEBRA_ROUTE_BATMAN)
 	{
 	  time_t uptime;
 	  struct tm *tm;
@@ -1827,7 +1833,10 @@ vty_show_ipv6_route_detail (struct vty *vty, struct route_node *rn)
 	  || rib->type == ZEBRA_ROUTE_OSPF6
 	  || rib->type == ZEBRA_ROUTE_BABEL
 	  || rib->type == ZEBRA_ROUTE_ISIS
-	  || rib->type == ZEBRA_ROUTE_BGP)
+	  || rib->type == ZEBRA_ROUTE_BGP
+	  || rib->type == ZEBRA_ROUTE_HSLS
+	  || rib->type == ZEBRA_ROUTE_OLSR
+	  || rib->type == ZEBRA_ROUTE_BATMAN)
 	{
 	  time_t uptime;
 	  struct tm *tm;
@@ -1969,7 +1978,10 @@ vty_show_ipv6_route (struct vty *vty, struct route_node *rn,
 	  || rib->type == ZEBRA_ROUTE_OSPF6
 	  || rib->type == ZEBRA_ROUTE_BABEL
 	  || rib->type == ZEBRA_ROUTE_ISIS
-	  || rib->type == ZEBRA_ROUTE_BGP)
+	  || rib->type == ZEBRA_ROUTE_BGP
+	  || rib->type == ZEBRA_ROUTE_HSLS
+	  || rib->type == ZEBRA_ROUTE_OLSR
+	  || rib->type == ZEBRA_ROUTE_BATMAN)
 	{
 	  time_t uptime;
 	  struct tm *tm;
