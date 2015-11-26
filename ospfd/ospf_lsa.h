@@ -243,6 +243,7 @@ extern int tv_cmp (struct timeval, struct timeval);
 
 extern int get_age (struct ospf_lsa *);
 extern u_int16_t ospf_lsa_checksum (struct lsa_header *);
+extern int ospf_lsa_checksum_valid (struct lsa_header *);
 extern int ospf_lsa_refresh_delay (struct ospf_lsa *);
 
 extern const char *dump_lsa_key (struct ospf_lsa *);
@@ -250,6 +251,7 @@ extern u_int32_t lsa_seqnum_increment (struct ospf_lsa *);
 extern void lsa_header_set (struct stream *, u_char, u_char, struct in_addr,
 		     struct in_addr);
 extern struct ospf_neighbor *ospf_nbr_lookup_ptop (struct ospf_interface *);
+extern int ospf_check_nbr_status (struct ospf *);
 
 /* Prototype for LSA primitive. */
 extern struct ospf_lsa *ospf_lsa_new (void);

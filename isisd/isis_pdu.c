@@ -62,7 +62,7 @@
 #endif /* PNBBY */
 
 /* Utility mask array. */
-static u_char maskbit[] = {
+static const u_char maskbit[] = {
   0x00, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe, 0xff
 };
 
@@ -402,6 +402,7 @@ process_p2p_hello (struct isis_circuit *circuit)
   u_int32_t expected = 0, found = 0, auth_tlv_offset = 0;
   uint16_t pdu_len;
   struct tlvs tlvs;
+  int v4_usable = 0, v6_usable = 0;
 
   if (isis->debugs & DEBUG_ADJ_PACKETS)
     {
@@ -493,6 +494,13 @@ process_p2p_hello (struct isis_circuit *circuit)
       return ISIS_WARNING;
     }
 
+  if (!(found & TLVFLAG_NLPID))
+    {
+      zlog_warn ("No supported protocols TLV in P2P IS to IS hello");
+      free_tlvs (&tlvs);
+      return ISIS_WARNING;
+    }
+
   /* 8.2.5.1 c) Authentication */
   if (circuit->passwd.type)
     {
@@ -511,11 +519,44 @@ process_p2p_hello (struct isis_circuit *circuit)
   /*
    * check if it's own interface ip match iih ip addrs
    */
-  if ((found & TLVFLAG_IPV4_ADDR) == 0 ||
-      ip_match (circuit->ip_addrs, tlvs.ipv4_addrs) == 0)
+  if (found & TLVFLAG_IPV4_ADDR)
     {
-      zlog_warn ("ISIS-Adj: No usable IP interface addresses "
-                 "in LAN IIH from %s\n", circuit->interface->name);
+      if (ip_match (circuit->ip_addrs, tlvs.ipv4_addrs))
+	v4_usable = 1;
+      else
+	zlog_warn ("ISIS-Adj: IPv4 addresses present but no overlap "
+		   "in P2P IIH from %s\n", circuit->interface->name);
+    }
+#ifndef HAVE_IPV6
+  else /* !(found & TLVFLAG_IPV4_ADDR) */
+    zlog_warn ("ISIS-Adj: no IPv4 in P2P IIH from %s "
+	       "(this isisd has no IPv6)\n", circuit->interface->name);
+
+#else
+  if (found & TLVFLAG_IPV6_ADDR)
+    {
+      /* TBA: check that we have a linklocal ourselves? */
+      struct listnode *node;
+      struct in6_addr *ip;
+      for (ALL_LIST_ELEMENTS_RO (tlvs.ipv6_addrs, node, ip))
+	if (IN6_IS_ADDR_LINKLOCAL (ip))
+	  {
+	    v6_usable = 1;
+	    break;
+	  }
+
+      if (!v6_usable)
+	zlog_warn ("ISIS-Adj: IPv6 addresses present but no link-local "
+		   "in P2P IIH from %s\n", circuit->interface->name);
+    }
+
+  if (!(found & (TLVFLAG_IPV4_ADDR | TLVFLAG_IPV6_ADDR)))
+    zlog_warn ("ISIS-Adj: neither IPv4 nor IPv6 addr in P2P IIH from %s\n",
+	       circuit->interface->name);
+#endif
+
+  if (!v6_usable && !v4_usable)
+    {
       free_tlvs (&tlvs);
       return ISIS_WARNING;
     }
@@ -525,6 +566,17 @@ process_p2p_hello (struct isis_circuit *circuit)
    * the circuit
    */
   adj = circuit->u.p2p.neighbor;
+  /* If an adjacency exists, check it is with the source of the hello
+   * packets */
+  if (adj)
+    {
+      if (memcmp(hdr->source_id, adj->sysid, ISIS_SYS_ID_LEN))
+	{
+          zlog_debug("hello source and adjacency do not match, set adj down\n");
+          isis_adj_state_change (adj, ISIS_ADJ_DOWN, "adj do not exist");
+          return 0;
+        }
+    }
   if (!adj || adj->level != hdr->circuit_t)
     {
       if (!adj)
@@ -550,9 +602,11 @@ process_p2p_hello (struct isis_circuit *circuit)
   tlvs_to_adj_area_addrs (&tlvs, adj);
 
   /* which protocol are spoken ??? */
-  if (found & TLVFLAG_NLPID)
-    if (tlvs_to_adj_nlpids (&tlvs, adj))
-      return ISIS_ERROR;
+  if (tlvs_to_adj_nlpids (&tlvs, adj))
+    {
+      free_tlvs (&tlvs);
+      return ISIS_WARNING;
+    }
 
   /* we need to copy addresses to the adj */
   if (found & TLVFLAG_IPV4_ADDR)
@@ -850,6 +904,7 @@ process_lan_hello (int level, struct isis_circuit *circuit, u_char * ssnpa)
   struct tlvs tlvs;
   u_char *snpa;
   struct listnode *node;
+  int v4_usable = 0, v6_usable = 0;
 
   if (isis->debugs & DEBUG_ADJ_PACKETS)
     {
@@ -973,6 +1028,14 @@ process_lan_hello (int level, struct isis_circuit *circuit, u_char * ssnpa)
       goto out;
     }
 
+  if (!(found & TLVFLAG_NLPID))
+    {
+      zlog_warn ("No supported protocols TLV in Level %d LAN IS to IS hello",
+		 level);
+      retval = ISIS_WARNING;
+      goto out;
+    }
+
   /* Verify authentication, either cleartext of HMAC MD5 */
   if (circuit->passwd.type)
     {
@@ -986,6 +1049,13 @@ process_lan_hello (int level, struct isis_circuit *circuit, u_char * ssnpa)
           retval = ISIS_WARNING;
           goto out;
         }
+    }
+
+  if (!memcmp (hdr.source_id, isis->sysid, ISIS_SYS_ID_LEN))
+    {
+      zlog_warn ("ISIS-Adj (%s): duplicate system ID on interface %s",
+		 circuit->area->area_tag, circuit->interface->name);
+      return ISIS_WARNING;
     }
 
   /*
@@ -1021,14 +1091,48 @@ process_lan_hello (int level, struct isis_circuit *circuit, u_char * ssnpa)
   /*
    * check if it's own interface ip match iih ip addrs
    */
-  if ((found & TLVFLAG_IPV4_ADDR) == 0 ||
-      ip_match (circuit->ip_addrs, tlvs.ipv4_addrs) == 0)
+  if (found & TLVFLAG_IPV4_ADDR)
     {
-      zlog_debug ("ISIS-Adj: No usable IP interface addresses "
-                  "in LAN IIH from %s\n", circuit->interface->name);
-      retval = ISIS_WARNING;
-      goto out;
+      if (ip_match (circuit->ip_addrs, tlvs.ipv4_addrs))
+	v4_usable = 1;
+      else
+	zlog_warn ("ISIS-Adj: IPv4 addresses present but no overlap "
+		   "in LAN IIH from %s\n", circuit->interface->name);
     }
+#ifndef HAVE_IPV6
+  else /* !(found & TLVFLAG_IPV4_ADDR) */
+    zlog_warn ("ISIS-Adj: no IPv4 in LAN IIH from %s "
+	       "(this isisd has no IPv6)\n", circuit->interface->name);
+
+#else
+  if (found & TLVFLAG_IPV6_ADDR)
+    {
+      /* TBA: check that we have a linklocal ourselves? */
+      struct listnode *node;
+      struct in6_addr *ip;
+      for (ALL_LIST_ELEMENTS_RO (tlvs.ipv6_addrs, node, ip))
+	if (IN6_IS_ADDR_LINKLOCAL (ip))
+	  {
+	    v6_usable = 1;
+	    break;
+	  }
+
+      if (!v6_usable)
+	zlog_warn ("ISIS-Adj: IPv6 addresses present but no link-local "
+		   "in LAN IIH from %s\n", circuit->interface->name);
+    }
+
+  if (!(found & (TLVFLAG_IPV4_ADDR | TLVFLAG_IPV6_ADDR)))
+    zlog_warn ("ISIS-Adj: neither IPv4 nor IPv6 addr in LAN IIH from %s\n",
+	       circuit->interface->name);
+#endif
+
+  if (!v6_usable && !v4_usable)
+    {
+      free_tlvs (&tlvs);
+      return ISIS_WARNING;
+    }
+
 
   adj = isis_adj_lookup (hdr.source_id, circuit->u.bc.adjdb[level - 1]);
   if ((adj == NULL) || (memcmp(adj->snpa, ssnpa, ETH_ALEN)) ||
@@ -1096,8 +1200,11 @@ process_lan_hello (int level, struct isis_circuit *circuit, u_char * ssnpa)
   tlvs_to_adj_area_addrs (&tlvs, adj);
 
   /* which protocol are spoken ??? */
-  if (found & TLVFLAG_NLPID)
-    tlvs_to_adj_nlpids (&tlvs, adj);
+  if (tlvs_to_adj_nlpids (&tlvs, adj))
+    {
+      retval = ISIS_WARNING;
+      goto out;
+    }
 
   /* we need to copy addresses to the adj */
   if (found & TLVFLAG_IPV4_ADDR)

@@ -1,3 +1,24 @@
+/* 
+ * Copyright (C) 2005 Sun Microsystems, Inc.
+ *
+ * This file is part of Quagga.
+ *
+ * Quagga is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2, or (at your option) any
+ * later version.
+ *
+ * Quagga is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Quagga; see the file COPYING.  If not, write to the Free
+ * Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+ * 02111-1307, USA.  
+ */
+
 #include <zebra.h>
 
 #include "vty.h"
@@ -432,6 +453,16 @@ static struct test_segment {
   },  { NULL, NULL, {0}, 0, { NULL, 0, 0 } }
 };
 
+#define COMMON_ATTRS \
+      BGP_ATTR_FLAG_TRANS, \
+      BGP_ATTR_ORIGIN, \
+      1, \
+      BGP_ORIGIN_EGP, \
+      BGP_ATTR_FLAG_TRANS, \
+      BGP_ATTR_NEXT_HOP, \
+      4, 192, 0, 2, 0
+#define COMMON_ATTR_SIZE 11
+
 /* */
 static struct aspath_tests {
   const char *desc;
@@ -443,6 +474,7 @@ static struct aspath_tests {
   const int cap;	/* capabilities to set for peer */
   const char attrheader [1024];
   size_t len;
+  const struct test_segment *old_segment;
 } aspath_tests [] =
 {
   /* 0 */
@@ -452,11 +484,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS2_DATA, 0,
     0,
-    { BGP_ATTR_FLAG_TRANS,
-      BGP_ATTR_AS_PATH, 
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS,
+      BGP_ATTR_AS_PATH,
       10,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 1 */
   {
@@ -465,11 +498,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS2_DATA, -1,
     0,
-    { BGP_ATTR_FLAG_TRANS,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS,
       BGP_ATTR_AS_PATH, 
       8,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 2 */
   {
@@ -478,11 +512,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS2_DATA, -1,
     0,
-    { BGP_ATTR_FLAG_TRANS,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS,
       BGP_ATTR_AS_PATH, 
       12,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 3 */
   {
@@ -491,11 +526,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS2_DATA, -1,
     0,
-    { BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
       BGP_ATTR_AS_PATH, 
       10,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 4 */
   {
@@ -504,11 +540,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS2_DATA, -1,
     0,
-    { BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
       BGP_ATTR_AS4_PATH, 
       10,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 5 */
   {
@@ -517,11 +554,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS4_DATA, -1,
     PEER_CAP_AS4_RCV,
-    { BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
       BGP_ATTR_AS4_PATH, 
       10,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 6 */
   {
@@ -530,11 +568,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS4_DATA, 0,
     PEER_CAP_AS4_RCV|PEER_CAP_AS4_ADV,
-    { BGP_ATTR_FLAG_TRANS,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS,
       BGP_ATTR_AS_PATH, 
       18,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 7 */
   {
@@ -543,11 +582,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS4_DATA, -1,
     PEER_CAP_AS4_RCV|PEER_CAP_AS4_ADV,
-    { BGP_ATTR_FLAG_TRANS,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS,
       BGP_ATTR_AS_PATH, 
       16,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 8 */
   {
@@ -556,11 +596,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS4_DATA, -1,
     PEER_CAP_AS4_RCV|PEER_CAP_AS4_ADV,
-    { BGP_ATTR_FLAG_TRANS,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS,
       BGP_ATTR_AS_PATH, 
       20,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 9 */
   {
@@ -569,11 +610,12 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS4_DATA, -1,
     PEER_CAP_AS4_RCV|PEER_CAP_AS4_ADV,
-    { BGP_ATTR_FLAG_TRANS,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS,
       BGP_ATTR_AS_PATH, 
       22,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 10 */
   {
@@ -582,24 +624,41 @@ static struct aspath_tests {
     "8466 3 52737 4096",
     AS4_DATA, -1,
     PEER_CAP_AS4_RCV|PEER_CAP_AS4_ADV,
-    { BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
       BGP_ATTR_AS_PATH, 
       18,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
   },
   /* 11 */
   {
-    "4b AS_PATH: confed",
+    "4b AS4_PATH w/o AS_PATH",
     &test_segments[6],
-    "8466 3 52737 4096",
+    NULL,
     AS4_DATA, -1,
     PEER_CAP_AS4_ADV,
-    { BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
       BGP_ATTR_AS4_PATH, 
       14,
     },
-    3,
+    COMMON_ATTR_SIZE + 3,
+  },
+  /* 12 */
+  {
+    "4b AS4_PATH: confed",
+    &test_segments[6],
+    "8466 3 52737 4096 (123 456 789)",
+    AS4_DATA, 0,
+    PEER_CAP_AS4_ADV,
+    { COMMON_ATTRS,
+      BGP_ATTR_FLAG_TRANS|BGP_ATTR_FLAG_OPTIONAL,
+      BGP_ATTR_AS4_PATH, 
+      14,
+    },
+    COMMON_ATTR_SIZE + 3,
+    &test_segments[0],
   },
   { NULL, NULL, NULL, 0, 0, 0, { 0 }, 0 },
 };
@@ -1212,6 +1271,14 @@ handle_attr_test (struct aspath_tests *t)
   
   stream_write (peer.ibuf, t->attrheader, t->len);
   datalen = aspath_put (peer.ibuf, asp, t->as4 == AS4_DATA);
+  if (t->old_segment)
+    {
+      char dummyaspath[] = { BGP_ATTR_FLAG_TRANS, BGP_ATTR_AS_PATH,
+                             t->old_segment->len };
+      stream_write (peer.ibuf, dummyaspath, sizeof (dummyaspath));
+      stream_write (peer.ibuf, t->old_segment->asdata, t->old_segment->len);
+      datalen += sizeof (dummyaspath) + t->old_segment->len;
+    }
   
   ret = bgp_attr_parse (&peer, &attr, t->len + datalen, NULL, NULL);
   
@@ -1224,17 +1291,22 @@ handle_attr_test (struct aspath_tests *t)
   if (ret != 0)
     goto out;
   
-  if (attr.aspath == NULL)
+  if (t->shouldbe && attr.aspath == NULL)
     {
-      printf ("aspath is NULL!\n");
+      printf ("aspath is NULL, but should be: %s\n", t->shouldbe);
       failed++;
     }
-  if (attr.aspath && strcmp (attr.aspath->str, t->shouldbe))
+  if (t->shouldbe && attr.aspath && strcmp (attr.aspath->str, t->shouldbe))
     {
       printf ("attr str and 'shouldbe' mismatched!\n"
               "attr str:  %s\n"
               "shouldbe:  %s\n",
               attr.aspath->str, t->shouldbe);
+      failed++;
+    }
+  if (!t->shouldbe && attr.aspath)
+    {
+      printf ("aspath should be NULL, but is: %s\n", attr.aspath->str);
       failed++;
     }
 

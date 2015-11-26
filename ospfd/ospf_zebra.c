@@ -133,8 +133,8 @@ ospf_interface_delete (int command, struct zclient *zclient,
 
   if (IS_DEBUG_OSPF (zebra, ZEBRA_INTERFACE))
     zlog_debug
-      ("Zebra: interface delete %s index %d flags %lld metric %d mtu %d",
-       ifp->name, ifp->ifindex, ifp->flags, ifp->metric, ifp->mtu);
+      ("Zebra: interface delete %s index %d flags %llx metric %d mtu %d",
+       ifp->name, ifp->ifindex, (unsigned long long)ifp->flags, ifp->metric, ifp->mtu);
 
 #ifdef HAVE_SNMP
   ospf_snmp_if_delete (ifp);
@@ -482,7 +482,7 @@ ospf_zebra_delete (struct prefix_ipv4 *p, struct ospf_route *or)
 	  if (IS_DEBUG_OSPF (zebra, ZEBRA_REDISTRIBUTE))
 	    {
 	      char buf[2][INET_ADDRSTRLEN];
-	      zlog_debug("Zebra: Route add %s/%d nexthop %s",
+	      zlog_debug("Zebra: Route delete %s/%d nexthop %s",
 			 inet_ntop(AF_INET, &p->prefix,
 				   buf[0], sizeof(buf[0])),
 			 p->prefixlen,
@@ -918,7 +918,7 @@ ospf_zebra_read_ipv4 (int command, struct zclient *zclient,
 
   return 0;
 }
-
+
 
 int
 ospf_distribute_list_out_set (struct ospf *ospf, int type, const char *name)
@@ -1004,7 +1004,7 @@ ospf_distribute_list_update_timer (struct thread *thread)
 
 /* Update distribute-list and set timer to apply access-list. */
 void
-ospf_distribute_list_update (struct ospf *ospf, int type)
+ospf_distribute_list_update (struct ospf *ospf, uintptr_t type)
 {
   struct route_table *rt;
 
@@ -1217,7 +1217,6 @@ ospf_distance_unset (struct vty *vty, struct ospf *ospf,
 {
   int ret;
   struct prefix_ipv4 p;
-  u_char distance;
   struct route_node *rn;
   struct ospf_distance *odistance;
 
@@ -1227,8 +1226,6 @@ ospf_distance_unset (struct vty *vty, struct ospf *ospf,
       vty_out (vty, "Malformed prefix%s", VTY_NEWLINE);
       return CMD_WARNING;
     }
-
-  distance = atoi (distance_str);
 
   rn = route_node_lookup (ospf->distance_table, (struct prefix *) &p);
   if (!rn)

@@ -205,7 +205,7 @@ get_mpls_te_instance_value (void)
 {
   static u_int32_t seqno = 0;
 
-  if (LEGAL_TE_INSTANCE_RANGE (seqno + 1))
+  if (seqno < MAX_LEGAL_TE_INSTANCE_NUM )
     seqno += 1;
   else
     seqno  = 1; /* Avoid zero. */
@@ -1036,7 +1036,8 @@ ospf_mpls_te_lsa_refresh (struct ospf_lsa *lsa)
   /* If the lsa's age reached to MaxAge, start flushing procedure. */
   if (IS_LSA_MAXAGE (lsa))
     {
-      lp->flags &= ~LPFLG_LSA_ENGAGED;
+      if (lp)
+        lp->flags &= ~LPFLG_LSA_ENGAGED;
       ospf_opaque_lsa_flush_schedule (lsa);
       goto out;
     }

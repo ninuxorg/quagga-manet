@@ -50,7 +50,7 @@
 #include "ospfd/ospf_snmp.h"
 
 static void nsm_clear_adj (struct ospf_neighbor *);
-
+
 /* OSPF NSM Timer functions. */
 static int
 ospf_inactivity_timer (struct thread *thread)
@@ -72,13 +72,10 @@ ospf_inactivity_timer (struct thread *thread)
 static int
 ospf_db_desc_timer (struct thread *thread)
 {
-  struct ospf_interface *oi;
   struct ospf_neighbor *nbr;
 
   nbr = THREAD_ARG (thread);
   nbr->t_db_desc = NULL;
-
-  oi = nbr->oi;
 
   if (IS_DEBUG_OSPF (nsm, NSM_TIMERS))
     zlog (NULL, LOG_DEBUG, "NSM[%s:%s]: Timer (DD Retransmit timer expire)",
@@ -159,7 +156,7 @@ nsm_should_adj (struct ospf_neighbor *nbr)
 
   return 0;
 }
-
+
 /* OSPF NSM functions. */
 static int
 nsm_packet_received (struct ospf_neighbor *nbr)
@@ -261,7 +258,7 @@ ospf_db_summary_clear (struct ospf_neighbor *nbr)
     }
 }
 
-
+
 
 /* The area link state database consists of the router-LSAs,
    network-LSAs and summary-LSAs contained in the area structure,
@@ -643,7 +640,7 @@ nsm_notice_state_change (struct ospf_neighbor *nbr, int next_state, int event)
 #endif
 }
 
-void
+static void
 nsm_change_state (struct ospf_neighbor *nbr, int state)
 {
   struct ospf_interface *oi = nbr->oi;
@@ -663,6 +660,25 @@ nsm_change_state (struct ospf_neighbor *nbr, int state)
 
   if (oi->type == OSPF_IFTYPE_VIRTUALLINK)
     vl_area = ospf_area_lookup_by_area_id (oi->ospf, oi->vl_data->vl_area_id);
+
+  /* Generate NeighborChange ISM event.
+   *
+   * In response to NeighborChange, DR election is rerun. The information
+   * from the election process is required by the router-lsa construction.
+   *
+   * Therefore, trigger the event prior to refreshing the LSAs. */
+  switch (oi->state) {
+  case ISM_DROther:
+  case ISM_Backup:
+  case ISM_DR:
+    if ((old_state < NSM_TwoWay && state >= NSM_TwoWay) ||
+        (old_state >= NSM_TwoWay && state < NSM_TwoWay))
+      OSPF_ISM_EVENT_EXECUTE (oi, ISM_NeighborChange);
+    break;
+  default:
+    /* ISM_PointToPoint -> ISM_Down, ISM_Loopback -> ISM_Down, etc. */
+    break;
+  }
 
   /* One of the neighboring routers changes to/from the FULL state. */
   if ((old_state != NSM_Full && state == NSM_Full) ||
@@ -763,20 +779,6 @@ nsm_change_state (struct ospf_neighbor *nbr, int state)
   if (state == NSM_Down)
     nbr->crypt_seqnum = 0;
   
-  /* Generete NeighborChange ISM event. */
-  switch (oi->state) {
-  case ISM_DROther:
-  case ISM_Backup:
-  case ISM_DR:
-    if ((old_state < NSM_TwoWay && state >= NSM_TwoWay) ||
-        (old_state >= NSM_TwoWay && state < NSM_TwoWay))
-      OSPF_ISM_EVENT_EXECUTE (oi, ISM_NeighborChange);
-    break;
-  default:
-    /* ISM_PointToPoint -> ISM_Down, ISM_Loopback -> ISM_Down, etc. */
-    break;
-  }
-
   /* Preserve old status? */
 }
 
@@ -787,11 +789,9 @@ ospf_nsm_event (struct thread *thread)
   int event;
   int next_state;
   struct ospf_neighbor *nbr;
-  struct in_addr router_id;
 
   nbr = THREAD_ARG (thread);
   event = THREAD_VAL (thread);
-  router_id = nbr->router_id;
 
   if (IS_DEBUG_OSPF (nsm, NSM_EVENTS))
     zlog_debug ("NSM[%s:%s]: %s (%s)", IF_NAME (nbr->oi),

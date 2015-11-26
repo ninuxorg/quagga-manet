@@ -323,7 +323,7 @@ ospf_packet_max (struct ospf_interface *oi)
   return max;
 }
 
-
+
 static int
 ospf_check_md5_digest (struct ospf_interface *oi, struct ospf_header *ospfh)
 {
@@ -383,7 +383,7 @@ static int
 ospf_make_md5_digest (struct ospf_interface *oi, struct ospf_packet *op)
 {
   struct ospf_header *ospfh;
-  unsigned char digest[OSPF_AUTH_MD5_SIZE];
+  unsigned char digest[OSPF_AUTH_MD5_SIZE] = {0};
   MD5_CTX ctx;
   void *ibuf;
   u_int32_t t;
@@ -410,7 +410,7 @@ ospf_make_md5_digest (struct ospf_interface *oi, struct ospf_packet *op)
 
   /* Get MD5 Authentication key from auth_key list. */
   if (list_isempty (OSPF_IF_PARAM (oi, auth_crypt)))
-    auth_key = (const u_int8_t *) "";
+    auth_key = (const u_int8_t *) digest;
   else
     {
       ck = listgetdata (listtail(OSPF_IF_PARAM (oi, auth_crypt)));
@@ -438,7 +438,7 @@ ospf_make_md5_digest (struct ospf_interface *oi, struct ospf_packet *op)
   return OSPF_AUTH_MD5_SIZE;
 }
 
-
+
 static int
 ospf_ls_req_timer (struct thread *thread)
 {
@@ -789,6 +789,9 @@ ospf_write (struct thread *thread)
   /* Now delete packet from queue. */
   ospf_packet_delete (oi);
 
+  /* Move this interface to the tail of write_q to
+	 serve everyone in a round robin fashion */
+  listnode_move_to_tail (ospf->oi_write_q, node);
   if (ospf_fifo_head (oi->obuf) == NULL)
     {
       oi->on_write_q = 0;
@@ -1660,8 +1663,10 @@ ospf_ls_upd_list_lsa (struct ospf_neighbor *nbr, struct stream *s,
         case OSPF_AS_EXTERNAL_LSA:
 #ifdef HAVE_OPAQUE_LSA
         case OSPF_OPAQUE_AS_LSA:
+#endif /* HAVE_OPAQUE_LSA */
           lsa->area = NULL;
           break;
+#ifdef HAVE_OPAQUE_LSA
         case OSPF_OPAQUE_LINK_LSA:
           lsa->oi = oi; /* Remember incoming interface for flooding control. */
           /* Fallthrough */
@@ -1761,7 +1766,11 @@ ospf_ls_upd (struct ip *iph, struct ospf_header *ospfh,
         ospf_lsa_discard (L); \
 	continue; }
 
-  /* Process each LSA received in the one packet. */
+  /* Process each LSA received in the one packet.
+   *
+   * Numbers in parentheses, e.g. (1), (2), etc., and the corresponding
+   * text below are from the steps in RFC 2328, Section 13.
+   */
   for (ALL_LIST_ELEMENTS (lsas, node, nnode, lsa))
     {
       struct ospf_lsa *ls_ret, *current;
@@ -1785,11 +1794,11 @@ ospf_ls_upd (struct ip *iph, struct ospf_header *ospfh,
 
       listnode_delete (lsas, lsa); /* We don't need it in list anymore */
 
-      /* Validate Checksum - Done above by ospf_ls_upd_list_lsa() */
+      /* (1) Validate Checksum - Done above by ospf_ls_upd_list_lsa() */
 
-      /* LSA Type  - Done above by ospf_ls_upd_list_lsa() */
+      /* (2) LSA Type  - Done above by ospf_ls_upd_list_lsa() */
    
-      /* Do not take in AS External LSAs if we are a stub or NSSA. */
+      /* (3) Do not take in AS External LSAs if we are a stub or NSSA. */
 
       /* Do not take in AS NSSA if this neighbor and we are not NSSA */
 
@@ -1817,25 +1826,48 @@ ospf_ls_upd (struct ip *iph, struct ospf_header *ospfh,
 	    DISCARD_LSA (lsa,2);
 	  }
 
+      /* VU229804: Router-LSA Adv-ID must be equal to LS-ID */
+      if (lsa->data->type == OSPF_ROUTER_LSA)
+	if (!IPV4_ADDR_SAME(&lsa->data->id, &lsa->data->adv_router))
+	  {
+	    char buf1[INET_ADDRSTRLEN];
+	    char buf2[INET_ADDRSTRLEN];
+	    char buf3[INET_ADDRSTRLEN];
+
+	    zlog_err("Incoming Router-LSA from %s with "
+		      "Adv-ID[%s] != LS-ID[%s]",
+		      inet_ntop (AF_INET, &ospfh->router_id,
+				 buf1, INET_ADDRSTRLEN),
+		      inet_ntop (AF_INET, &lsa->data->id,
+				 buf2, INET_ADDRSTRLEN),
+		      inet_ntop (AF_INET, &lsa->data->adv_router,
+				 buf3, INET_ADDRSTRLEN));
+	    zlog_err("OSPF domain compromised by attack or corruption. "
+		     "Verify correct operation of -ALL- OSPF routers.");
+	    DISCARD_LSA (lsa, 0);
+	  }
+
       /* Find the LSA in the current database. */
 
       current = ospf_lsa_lookup_by_header (oi->area, lsa->data);
 
-      /* If the LSA's LS age is equal to MaxAge, and there is currently
+      /* (4) If the LSA's LS age is equal to MaxAge, and there is currently
 	 no instance of the LSA in the router's link state database,
 	 and none of router's neighbors are in states Exchange or Loading,
-	 then take the following actions. */
+	 then take the following actions: */
 
       if (IS_LSA_MAXAGE (lsa) && !current &&
-	  (ospf_nbr_count (oi, NSM_Exchange) +
-	   ospf_nbr_count (oi, NSM_Loading)) == 0)
+	  ospf_check_nbr_status(oi->ospf))
 	{
-	  /* Response Link State Acknowledgment. */
+	  /* (4a) Response Link State Acknowledgment. */
 	  ospf_ls_ack_send (nbr, lsa);
 
-	  /* Discard LSA. */	  
-	  zlog_info ("Link State Update[%s]: LS age is equal to MaxAge.",
-		     dump_lsa_key(lsa));
+	  /* (4b) Discard LSA. */
+          if (IS_DEBUG_OSPF (lsa, LSA))
+            {
+	       zlog_debug ("Link State Update[%s]: LS age is equal to MaxAge.",
+                           dump_lsa_key(lsa));
+            }
           DISCARD_LSA (lsa, 3);
 	}
 
@@ -1890,7 +1922,7 @@ ospf_ls_upd (struct ip *iph, struct ospf_header *ospfh,
 #endif /* HAVE_OPAQUE_LSA */
 
       /* It might be happen that received LSA is self-originated network LSA, but
-       * router ID is cahnged. So, we should check if LSA is a network-LSA whose
+       * router ID is changed. So, we should check if LSA is a network-LSA whose
        * Link State ID is one of the router's own IP interface addresses but whose
        * Advertising Router is not equal to the router's own Router ID
        * According to RFC 2328 12.4.2 and 13.4 this LSA should be flushed.
@@ -1929,7 +1961,9 @@ ospf_ls_upd (struct ip *iph, struct ospf_header *ospfh,
       /* (5) Find the instance of this LSA that is currently contained
 	 in the router's link state database.  If there is no
 	 database copy, or the received LSA is more recent than
-	 the database copy the following steps must be performed. */
+	 the database copy the following steps must be performed.
+         (The sub steps from RFC 2328 section 13 step (5) will be performed in
+         ospf_flood() ) */
 
       if (current == NULL ||
 	  (ret = ospf_lsa_more_recent (current, lsa)) < 0)
@@ -2089,7 +2123,7 @@ ospf_ls_ack (struct ip *iph, struct ospf_header *ospfh,
 
       lsr = ospf_ls_retransmit_lookup (nbr, lsa);
 
-      if (lsr != NULL && lsr->data->ls_seqnum == lsa->data->ls_seqnum)
+      if (lsr != NULL && ospf_lsa_more_recent (lsr, lsa) == 0)
         {
 #ifdef HAVE_OPAQUE_LSA
           if (IS_OPAQUE_LSA (lsr->data->type))
@@ -2105,7 +2139,7 @@ ospf_ls_ack (struct ip *iph, struct ospf_header *ospfh,
 
   return;
 }
-
+
 static struct stream *
 ospf_recv_packet (int fd, struct interface **ifp, struct stream *ibuf)
 {
@@ -3109,22 +3143,7 @@ ospf_make_db_desc (struct ospf_interface *oi, struct ospf_neighbor *nbr,
   options = OPTIONS (oi);
 #ifdef HAVE_OPAQUE_LSA
   if (CHECK_FLAG (oi->ospf->config, OSPF_OPAQUE_CAPABLE))
-    {
-      if (IS_SET_DD_I (nbr->dd_flags)
-      ||  CHECK_FLAG (nbr->options, OSPF_OPTION_O))
-        /*
-         * Set O-bit in the outgoing DD packet for capablity negotiation,
-         * if one of following case is applicable. 
-         *
-         * 1) WaitTimer expiration event triggered the neighbor state to
-         *    change to Exstart, but no (valid) DD packet has received
-         *    from the neighbor yet.
-         *
-         * 2) At least one DD packet with O-bit on has received from the
-         *    neighbor.
-         */
-        SET_FLAG (options, OSPF_OPTION_O);
-    }
+    SET_FLAG (options, OSPF_OPTION_O);
 #endif /* HAVE_OPAQUE_LSA */
   stream_putc (s, options);
 
@@ -3295,7 +3314,7 @@ ospf_make_ls_upd (struct ospf_interface *oi, struct list *update, struct stream 
       u_int16_t ls_age;
 
       if (IS_DEBUG_OSPF_EVENT)
-        zlog_debug ("ospf_make_ls_upd: List Iteration");
+        zlog_debug ("ospf_make_ls_upd: List Iteration %d", count);
 
       lsa = listgetdata (node);
 
@@ -3701,7 +3720,8 @@ ospf_ls_upd_queue_send (struct ospf_interface *oi, struct list *update,
   u_int16_t length = OSPF_HEADER_SIZE;
 
   if (IS_DEBUG_OSPF_EVENT)
-    zlog_debug ("listcount = %d, dst %s", listcount (update), inet_ntoa(addr));
+    zlog_debug ("listcount = %d, [%s]dst %s", listcount (update), IF_NAME(oi),
+			    inet_ntoa(addr));
   
   op = ospf_ls_upd_packet_new (update, oi);
 

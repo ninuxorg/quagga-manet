@@ -49,7 +49,7 @@
 #include "ospfd/ospf_vty.h"
 #include "ospfd/ospf_dump.h"
 
-
+
 static const char *ospf_network_type_str[] =
 {
   "Null",
@@ -61,7 +61,7 @@ static const char *ospf_network_type_str[] =
   "LOOPBACK"
 };
 
-
+
 /* Utility functions. */
 static int
 ospf_str2area_id (const char *str, struct in_addr *area_id, int *format)
@@ -94,7 +94,7 @@ ospf_str2area_id (const char *str, struct in_addr *area_id, int *format)
   return 0;
 }
 
-
+
 static int
 str2metric (const char *str, int *metric)
 {
@@ -142,7 +142,7 @@ ospf_oi_count (struct interface *ifp)
   return i;
 }
 
-
+
 DEFUN (router_ospf,
        router_ospf_cmd,
        "router ospf",
@@ -490,7 +490,7 @@ DEFUN (no_ospf_network_area,
   return CMD_SUCCESS;
 }
 
-
+
 DEFUN (ospf_area_range,
        ospf_area_range_cmd,
        "area (A.B.C.D|<0-4294967295>) range A.B.C.D/M",
@@ -634,7 +634,7 @@ ALIAS (no_ospf_area_range,
        "Advertise this range (default)\n"
        "User specified metric for this range\n"
        "Advertised metric for this range\n")
-
+
 DEFUN (ospf_area_range_substitute,
        ospf_area_range_substitute_cmd,
        "area (A.B.C.D|<0-4294967295>) range A.B.C.D/M substitute A.B.C.D/M",
@@ -686,7 +686,7 @@ DEFUN (no_ospf_area_range_substitute,
   return CMD_SUCCESS;
 }
 
-
+
 /* Command Handler Logic in VLink stuff is delicate!!
 
 	ALTER AT YOUR OWN RISK!!!!
@@ -771,7 +771,7 @@ ospf_find_vl_data (struct ospf *ospf, struct ospf_vl_config_data *vl_config)
 	{
 	  vl_data->vl_oi = ospf_vl_new (ospf, vl_data);
 	  ospf_vl_add (ospf, vl_data);
-	  ospf_spf_calculate_schedule (ospf);
+	  ospf_spf_calculate_schedule (ospf, SPF_FLAG_CONFIG_CHANGE);
 	}
     }
   return vl_data;
@@ -1382,7 +1382,7 @@ ALIAS (no_ospf_area_vlink,
        VLINK_HELPSTR_AUTHTYPE_SIMPLE
        VLINK_HELPSTR_AUTH_MD5)
 
-
+
 DEFUN (ospf_area_shortcut,
        ospf_area_shortcut_cmd,
        "area (A.B.C.D|<0-4294967295>) shortcut (default|enable|disable)",
@@ -1450,7 +1450,7 @@ DEFUN (no_ospf_area_shortcut,
   return CMD_SUCCESS;
 }
 
-
+
 DEFUN (ospf_area_stub,
        ospf_area_stub_cmd,
        "area (A.B.C.D|<0-4294967295>) stub",
@@ -1742,12 +1742,11 @@ DEFUN (no_ospf_area_default_cost,
   struct ospf *ospf = vty->index;
   struct ospf_area *area;
   struct in_addr area_id;
-  u_int32_t cost;
   int format;
   struct prefix_ipv4 p;
 
   VTY_GET_OSPF_AREA_ID_NO_BB ("default-cost", area_id, format, argv[0]);
-  VTY_GET_INTEGER_RANGE ("stub default cost", cost, argv[1], 0, 16777215);
+  VTY_CHECK_INTEGER_RANGE ("stub default cost", argv[1], 0, OSPF_LS_INFINITY);
 
   area = ospf_area_lookup_by_area_id (ospf, area_id);
   if (area == NULL)
@@ -1933,7 +1932,6 @@ DEFUN (no_ospf_area_filter_list,
   struct ospf *ospf = vty->index;
   struct ospf_area *area;
   struct in_addr area_id;
-  struct prefix_list *plist;
   int format;
 
   VTY_GET_OSPF_AREA_ID (area_id, format, argv[0]);
@@ -1941,7 +1939,6 @@ DEFUN (no_ospf_area_filter_list,
   if ((area = ospf_area_lookup_by_area_id (ospf, area_id)) == NULL)
     return CMD_SUCCESS;
   
-  plist = prefix_list_lookup (AFI_IP, argv[1]);
   if (strncmp (argv[2], "in", 2) == 0)
     {
       if (PREFIX_NAME_IN (area))
@@ -1974,11 +1971,13 @@ DEFUN (no_ospf_area_filter_list,
   return CMD_SUCCESS;
 }
 
-
+
 DEFUN (ospf_area_authentication_message_digest,
        ospf_area_authentication_message_digest_cmd,
        "area (A.B.C.D|<0-4294967295>) authentication message-digest",
        "OSPF area parameters\n"
+       "OSPF area ID in IP address format\n"
+       "OSPF area ID as a decimal value\n"
        "Enable authentication\n"
        "Use message-digest authentication\n")
 {
@@ -2043,7 +2042,7 @@ DEFUN (no_ospf_area_authentication,
   return CMD_SUCCESS;
 }
 
-
+
 DEFUN (ospf_abr_type,
        ospf_abr_type_cmd,
        "ospf abr-type (cisco|ibm|shortcut|standard)",
@@ -2173,7 +2172,7 @@ DEFUN (ospf_compatible_rfc1583,
   if (!CHECK_FLAG (ospf->config, OSPF_RFC1583_COMPATIBLE))
     {
       SET_FLAG (ospf->config, OSPF_RFC1583_COMPATIBLE);
-      ospf_spf_calculate_schedule (ospf);
+      ospf_spf_calculate_schedule (ospf, SPF_FLAG_CONFIG_CHANGE);
     }
   return CMD_SUCCESS;
 }
@@ -2190,7 +2189,7 @@ DEFUN (no_ospf_compatible_rfc1583,
   if (CHECK_FLAG (ospf->config, OSPF_RFC1583_COMPATIBLE))
     {
       UNSET_FLAG (ospf->config, OSPF_RFC1583_COMPATIBLE);
-      ospf_spf_calculate_schedule (ospf);
+      ospf_spf_calculate_schedule (ospf, SPF_FLAG_CONFIG_CHANGE);
     }
   return CMD_SUCCESS;
 }
@@ -2207,7 +2206,7 @@ ALIAS (no_ospf_compatible_rfc1583,
        NO_STR
        "OSPF specific commands\n"
        "Disable the RFC1583Compatibility flag\n")
-
+
 static int
 ospf_timers_spf_set (struct vty *vty, unsigned int delay,
                      unsigned int hold,
@@ -2298,7 +2297,7 @@ ALIAS_DEPRECATED (no_ospf_timers_throttle_spf,
                   NO_STR
                   "Adjust routing timers\n"
                   "OSPF SPF timers\n")
-
+
 DEFUN (ospf_neighbor,
        ospf_neighbor_cmd,
        "neighbor A.B.C.D",
@@ -2322,7 +2321,7 @@ DEFUN (ospf_neighbor,
   if (argc > 1)
     ospf_nbr_nbma_priority_set (ospf, nbr_addr, priority);
   if (argc > 2)
-    ospf_nbr_nbma_poll_interval_set (ospf, nbr_addr, priority);
+    ospf_nbr_nbma_poll_interval_set (ospf, nbr_addr, interval);
 
   return CMD_SUCCESS;
 }
@@ -2394,11 +2393,10 @@ DEFUN (no_ospf_neighbor,
 {
   struct ospf *ospf = vty->index;
   struct in_addr nbr_addr;
-  int ret;
 
   VTY_GET_IPV4_ADDRESS ("neighbor address", nbr_addr, argv[0]);
 
-  ret = ospf_nbr_nbma_unset (ospf, nbr_addr);
+  (void)ospf_nbr_nbma_unset (ospf, nbr_addr);
 
   return CMD_SUCCESS;
 }
@@ -2432,7 +2430,7 @@ ALIAS (no_ospf_neighbor,
        "Dead Neighbor Polling interval\n"
        "Seconds\n")
 
-
+
 DEFUN (ospf_refresh_timer, ospf_refresh_timer_cmd,
        "refresh timer <10-1800>",
        "Adjust refresh parameters\n"
@@ -2550,7 +2548,7 @@ const char *ospf_shortcut_mode_descr_str[] =
 };
 
 
-
+
 static void
 show_ip_ospf_area (struct vty *vty, struct ospf_area *area)
 {
@@ -2751,6 +2749,9 @@ DEFUN (show_ip_ospf,
       vty_out (vty, "last executed %s ago%s",
                ospf_timeval_dump (&result, timebuf, sizeof (timebuf)),
                VTY_NEWLINE);
+      vty_out (vty, " Last SPF duration %s%s",
+	       ospf_timeval_dump (&ospf->ts_spf_duration, timebuf, sizeof (timebuf)),
+	       VTY_NEWLINE);
     }
   else
     vty_out (vty, "has not been run%s", VTY_NEWLINE);
@@ -2802,7 +2803,7 @@ DEFUN (show_ip_ospf,
   return CMD_SUCCESS;
 }
 
-
+
 static void
 show_ip_ospf_interface_sub (struct vty *vty, struct ospf *ospf,
 			    struct interface *ifp)
@@ -3431,7 +3432,7 @@ DEFUN (show_ip_ospf_neighbor_int_detail,
   return CMD_SUCCESS;
 }
 
-
+
 /* Show functions */
 static int
 show_lsa_summary (struct vty *vty, struct ospf_lsa *lsa, int self)
@@ -4035,21 +4036,25 @@ show_ip_ospf_database_summary (struct vty *vty, struct ospf *ospf, int self)
 static void
 show_ip_ospf_database_maxage (struct vty *vty, struct ospf *ospf)
 {
-  struct listnode *node;
-  struct ospf_lsa *lsa;
+  struct route_node *rn;
 
   vty_out (vty, "%s                MaxAge Link States:%s%s",
            VTY_NEWLINE, VTY_NEWLINE, VTY_NEWLINE);
 
-  for (ALL_LIST_ELEMENTS_RO (ospf->maxage_lsa, node, lsa))
+  for (rn = route_top (ospf->maxage_lsa); rn; rn = route_next (rn))
     {
-      vty_out (vty, "Link type: %d%s", lsa->data->type, VTY_NEWLINE);
-      vty_out (vty, "Link State ID: %s%s",
-               inet_ntoa (lsa->data->id), VTY_NEWLINE);
-      vty_out (vty, "Advertising Router: %s%s",
-               inet_ntoa (lsa->data->adv_router), VTY_NEWLINE);
-      vty_out (vty, "LSA lock count: %d%s", lsa->lock, VTY_NEWLINE);
-      vty_out (vty, "%s", VTY_NEWLINE);
+      struct ospf_lsa *lsa;
+
+      if ((lsa = rn->info) != NULL)
+	{
+	  vty_out (vty, "Link type: %d%s", lsa->data->type, VTY_NEWLINE);
+	  vty_out (vty, "Link State ID: %s%s",
+		   inet_ntoa (lsa->data->id), VTY_NEWLINE);
+	  vty_out (vty, "Advertising Router: %s%s",
+		   inet_ntoa (lsa->data->adv_router), VTY_NEWLINE);
+	  vty_out (vty, "LSA lock count: %d%s", lsa->lock, VTY_NEWLINE);
+	  vty_out (vty, "%s", VTY_NEWLINE);
+	}
     }
 }
 
@@ -4299,7 +4304,7 @@ ALIAS (show_ip_ospf_database_type_adv_router,
        OSPF_LSA_TYPES_DESC
        "Self-originated link states\n")
 
-
+
 DEFUN (ip_ospf_authentication_args,
        ip_ospf_authentication_args_addr_cmd,
        "ip ospf authentication (null|message-digest) A.B.C.D",
@@ -5306,7 +5311,13 @@ DEFUN (ip_ospf_network,
   struct interface *ifp = vty->index;
   int old_type = IF_DEF_PARAMS (ifp)->type;
   struct route_node *rn;
-  
+
+  if (old_type == OSPF_IFTYPE_LOOPBACK)
+    {
+      vty_out (vty, "This is a loopback interface. Can't set network type.%s", VTY_NEWLINE);
+      return CMD_WARNING;
+    }
+
   if (strncmp (argv[0], "b", 1) == 0)
     IF_DEF_PARAMS (ifp)->type = OSPF_IFTYPE_BROADCAST;
   else if (strncmp (argv[0], "n", 1) == 0)
@@ -5403,7 +5414,7 @@ DEFUN (ip_ospf_priority,
        "Address of interface")
 {
   struct interface *ifp = vty->index;
-  u_int32_t priority;
+  long priority;
   struct route_node *rn;
   struct in_addr addr;
   int ret;
@@ -5784,11 +5795,10 @@ ALIAS (no_ip_ospf_transmit_delay,
        "OSPF interface commands\n"
        "Link state transmit delay\n")
 
-
-DEFUN (ospf_redistribute_source_metric_type,
-       ospf_redistribute_source_metric_type_routemap_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD 
-         " metric <0-16777214> metric-type (1|2) route-map WORD",
+DEFUN (ospf_redistribute_source,
+       ospf_redistribute_source_cmd,
+       "redistribute " QUAGGA_REDIST_STR_OSPFD
+         " {metric <0-16777214>|metric-type (1|2)|route-map WORD}",
        REDIST_STR
        QUAGGA_REDIST_HELP_STR_OSPFD
        "Metric for redistributed routes\n"
@@ -5804,207 +5814,30 @@ DEFUN (ospf_redistribute_source_metric_type,
   int type = -1;
   int metric = -1;
 
+  if (argc < 4)
+    return CMD_WARNING; /* should not happen */
+
   /* Get distribute source. */
   source = proto_redistnum(AFI_IP, argv[0]);
   if (source < 0 || source == ZEBRA_ROUTE_OSPF)
     return CMD_WARNING;
 
   /* Get metric value. */
-  if (argc >= 2)
+  if (argv[1] != NULL)
     if (!str2metric (argv[1], &metric))
       return CMD_WARNING;
 
   /* Get metric type. */
-  if (argc >= 3)
+  if (argv[2] != NULL)
     if (!str2metric_type (argv[2], &type))
       return CMD_WARNING;
 
-  if (argc == 4)
-    ospf_routemap_set (ospf, source, argv[3]);
-  else
-    ospf_routemap_unset (ospf, source);
-  
-  return ospf_redistribute_set (ospf, source, type, metric);
-}
-
-ALIAS (ospf_redistribute_source_metric_type,
-       ospf_redistribute_source_metric_type_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD 
-       " metric <0-16777214> metric-type (1|2)",
-       REDIST_STR
-       QUAGGA_REDIST_HELP_STR_OSPFD
-       "Metric for redistributed routes\n"
-       "OSPF default metric\n"
-       "OSPF exterior metric type for redistributed routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n")
-
-ALIAS (ospf_redistribute_source_metric_type,
-       ospf_redistribute_source_metric_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD " metric <0-16777214>",
-       REDIST_STR
-       QUAGGA_REDIST_HELP_STR_OSPFD
-       "Metric for redistributed routes\n"
-       "OSPF default metric\n")
-
-DEFUN (ospf_redistribute_source_type_metric,
-       ospf_redistribute_source_type_metric_routemap_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD 
-         " metric-type (1|2) metric <0-16777214> route-map WORD",
-       REDIST_STR
-       QUAGGA_REDIST_HELP_STR_OSPFD
-       "OSPF exterior metric type for redistributed routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "Metric for redistributed routes\n"
-       "OSPF default metric\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int source;
-  int type = -1;
-  int metric = -1;
-
-  /* Get distribute source. */
-  source = proto_redistnum(AFI_IP, argv[0]);
-  if (source < 0 || source == ZEBRA_ROUTE_OSPF)
-    return CMD_WARNING;
-
-  /* Get metric value. */
-  if (argc >= 2)
-    if (!str2metric_type (argv[1], &type))
-      return CMD_WARNING;
-
-  /* Get metric type. */
-  if (argc >= 3)
-    if (!str2metric (argv[2], &metric))
-      return CMD_WARNING;
-
-  if (argc == 4)
+  if (argv[3] != NULL)
     ospf_routemap_set (ospf, source, argv[3]);
   else
     ospf_routemap_unset (ospf, source);
 
   return ospf_redistribute_set (ospf, source, type, metric);
-}
-
-ALIAS (ospf_redistribute_source_type_metric,
-       ospf_redistribute_source_type_metric_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD 
-         " metric-type (1|2) metric <0-16777214>",
-       REDIST_STR
-       QUAGGA_REDIST_HELP_STR_OSPFD
-       "OSPF exterior metric type for redistributed routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "Metric for redistributed routes\n"
-       "OSPF default metric\n")
-
-ALIAS (ospf_redistribute_source_type_metric,
-       ospf_redistribute_source_type_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD " metric-type (1|2)",
-       REDIST_STR
-       QUAGGA_REDIST_HELP_STR_OSPFD
-       "OSPF exterior metric type for redistributed routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n")
-
-ALIAS (ospf_redistribute_source_type_metric,
-       ospf_redistribute_source_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD,
-       REDIST_STR
-       QUAGGA_REDIST_HELP_STR_OSPFD)
-
-DEFUN (ospf_redistribute_source_metric_routemap,
-       ospf_redistribute_source_metric_routemap_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD 
-         " metric <0-16777214> route-map WORD",
-       REDIST_STR
-       QUAGGA_REDIST_HELP_STR_OSPFD
-       "Metric for redistributed routes\n"
-       "OSPF default metric\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int source;
-  int metric = -1;
-
-  /* Get distribute source. */
-  source = proto_redistnum(AFI_IP, argv[0]);
-  if (source < 0 || source == ZEBRA_ROUTE_OSPF)
-    return CMD_WARNING;
-
-  /* Get metric value. */
-  if (argc >= 2)
-    if (!str2metric (argv[1], &metric))
-      return CMD_WARNING;
-
-  if (argc == 3)
-    ospf_routemap_set (ospf, source, argv[2]);
-  else
-    ospf_routemap_unset (ospf, source);
-  
-  return ospf_redistribute_set (ospf, source, -1, metric);
-}
-
-DEFUN (ospf_redistribute_source_type_routemap,
-       ospf_redistribute_source_type_routemap_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD 
-         " metric-type (1|2) route-map WORD",
-       REDIST_STR
-       QUAGGA_REDIST_HELP_STR_OSPFD
-       "OSPF exterior metric type for redistributed routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int source;
-  int type = -1;
-
-  /* Get distribute source. */
-  source = proto_redistnum(AFI_IP, argv[0]);
-  if (source < 0 || source == ZEBRA_ROUTE_OSPF)
-    return CMD_WARNING;
-
-  /* Get metric value. */
-  if (argc >= 2)
-    if (!str2metric_type (argv[1], &type))
-      return CMD_WARNING;
-
-  if (argc == 3)
-    ospf_routemap_set (ospf, source, argv[2]);
-  else
-    ospf_routemap_unset (ospf, source);
-
-  return ospf_redistribute_set (ospf, source, type, -1);
-}
-
-DEFUN (ospf_redistribute_source_routemap,
-       ospf_redistribute_source_routemap_cmd,
-       "redistribute " QUAGGA_REDIST_STR_OSPFD " route-map WORD",
-       REDIST_STR
-       QUAGGA_REDIST_HELP_STR_OSPFD
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int source;
-
-  /* Get distribute source. */
-  source = proto_redistnum(AFI_IP, argv[0]);
-  if (source < 0 || source == ZEBRA_ROUTE_OSPF)
-    return CMD_WARNING;
-
-  if (argc == 2)
-    ospf_routemap_set (ospf, source, argv[1]);
-  else
-    ospf_routemap_unset (ospf, source);
-
-  return ospf_redistribute_set (ospf, source, -1, -1);
 }
 
 DEFUN (no_ospf_redistribute_source,
@@ -6037,7 +5870,7 @@ DEFUN (ospf_distribute_list_out,
   int source;
 
   /* Get distribute source. */
-  source = proto_redistnum(AFI_IP, argv[0]);
+  source = proto_redistnum(AFI_IP, argv[1]);
   if (source < 0 || source == ZEBRA_ROUTE_OSPF)
     return CMD_WARNING;
 
@@ -6056,7 +5889,7 @@ DEFUN (no_ospf_distribute_list_out,
   struct ospf *ospf = vty->index;
   int source;
 
-  source = proto_redistnum(AFI_IP, argv[0]);
+  source = proto_redistnum(AFI_IP, argv[1]);
   if (source < 0 || source == ZEBRA_ROUTE_OSPF)
     return CMD_WARNING;
 
@@ -6064,397 +5897,50 @@ DEFUN (no_ospf_distribute_list_out,
 }
 
 /* Default information originate. */
-DEFUN (ospf_default_information_originate_metric_type_routemap,
-       ospf_default_information_originate_metric_type_routemap_cmd,
-       "default-information originate metric <0-16777214> metric-type (1|2) route-map WORD",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "OSPF default metric\n"
-       "OSPF metric\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int type = -1;
-  int metric = -1;
-
-  /* Get metric value. */
-  if (argc >= 1)
-    if (!str2metric (argv[0], &metric))
-      return CMD_WARNING;
-
-  /* Get metric type. */
-  if (argc >= 2)
-    if (!str2metric_type (argv[1], &type))
-      return CMD_WARNING;
-
-  if (argc == 3)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[2]);
-  else
-    ospf_routemap_unset (ospf, DEFAULT_ROUTE);
-
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ZEBRA,
-					type, metric);
-}
-
-ALIAS (ospf_default_information_originate_metric_type_routemap,
-       ospf_default_information_originate_metric_type_cmd,
-       "default-information originate metric <0-16777214> metric-type (1|2)",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "OSPF default metric\n"
-       "OSPF metric\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n")
-
-ALIAS (ospf_default_information_originate_metric_type_routemap,
-       ospf_default_information_originate_metric_cmd,
-       "default-information originate metric <0-16777214>",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "OSPF default metric\n"
-       "OSPF metric\n")
-
-ALIAS (ospf_default_information_originate_metric_type_routemap,
+DEFUN (ospf_default_information_originate,
        ospf_default_information_originate_cmd,
-       "default-information originate",
-       "Control distribution of default information\n"
-       "Distribute a default route\n")
-
-/* Default information originate. */
-DEFUN (ospf_default_information_originate_metric_routemap,
-       ospf_default_information_originate_metric_routemap_cmd,
-       "default-information originate metric <0-16777214> route-map WORD",
+       "default-information originate "
+         "{always|metric <0-16777214>|metric-type (1|2)|route-map WORD}",
        "Control distribution of default information\n"
        "Distribute a default route\n"
+       "Always advertise default route\n"
        "OSPF default metric\n"
        "OSPF metric\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int metric = -1;
-
-  /* Get metric value. */
-  if (argc >= 1)
-    if (!str2metric (argv[0], &metric))
-      return CMD_WARNING;
-
-  if (argc == 2)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[1]);
-  else
-    ospf_routemap_unset (ospf, DEFAULT_ROUTE);
-
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ZEBRA,
-					-1, metric);
-}
-
-/* Default information originate. */
-DEFUN (ospf_default_information_originate_routemap,
-       ospf_default_information_originate_routemap_cmd,
-       "default-information originate route-map WORD",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-
-  if (argc == 1)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[0]);
-  else
-    ospf_routemap_unset (ospf, DEFAULT_ROUTE);
-
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ZEBRA, -1, -1);
-}
-
-DEFUN (ospf_default_information_originate_type_metric_routemap,
-       ospf_default_information_originate_type_metric_routemap_cmd,
-       "default-information originate metric-type (1|2) metric <0-16777214> route-map WORD",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
        "OSPF metric type for default routes\n"
        "Set OSPF External Type 1 metrics\n"
        "Set OSPF External Type 2 metrics\n"
-       "OSPF default metric\n"
-       "OSPF metric\n"
        "Route map reference\n"
        "Pointer to route-map entries\n")
 {
   struct ospf *ospf = vty->index;
+  int default_originate = DEFAULT_ORIGINATE_ZEBRA;
   int type = -1;
   int metric = -1;
 
-  /* Get metric type. */
-  if (argc >= 1)
-    if (!str2metric_type (argv[0], &type))
-      return CMD_WARNING;
+  if (argc < 4)
+    return CMD_WARNING; /* this should not happen */
+
+  /* Check whether "always" was specified */
+  if (argv[0] != NULL)
+    default_originate = DEFAULT_ORIGINATE_ALWAYS;
 
   /* Get metric value. */
-  if (argc >= 2)
+  if (argv[1] != NULL)
     if (!str2metric (argv[1], &metric))
       return CMD_WARNING;
 
-  if (argc == 3)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[2]);
+  /* Get metric type. */
+  if (argv[2] != NULL)
+    if (!str2metric_type (argv[2], &type))
+      return CMD_WARNING;
+
+  if (argv[3] != NULL)
+    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[3]);
   else
     ospf_routemap_unset (ospf, DEFAULT_ROUTE);
 
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ZEBRA,
+  return ospf_redistribute_default_set (ospf, default_originate,
 					type, metric);
-}
-
-ALIAS (ospf_default_information_originate_type_metric_routemap,
-       ospf_default_information_originate_type_metric_cmd,
-       "default-information originate metric-type (1|2) metric <0-16777214>",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "OSPF default metric\n"
-       "OSPF metric\n")
-
-ALIAS (ospf_default_information_originate_type_metric_routemap,
-       ospf_default_information_originate_type_cmd,
-       "default-information originate metric-type (1|2)",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n")
-
-DEFUN (ospf_default_information_originate_type_routemap,
-       ospf_default_information_originate_type_routemap_cmd,
-       "default-information originate metric-type (1|2) route-map WORD",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int type = -1;
-
-  /* Get metric type. */
-  if (argc >= 1)
-    if (!str2metric_type (argv[0], &type))
-      return CMD_WARNING;
-
-  if (argc == 2)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[1]);
-  else
-    ospf_routemap_unset (ospf, DEFAULT_ROUTE);
-
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ZEBRA,
-					type, -1);
-}
-
-DEFUN (ospf_default_information_originate_always_metric_type_routemap,
-       ospf_default_information_originate_always_metric_type_routemap_cmd,
-       "default-information originate always metric <0-16777214> metric-type (1|2) route-map WORD",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n"
-       "OSPF default metric\n"
-       "OSPF metric\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int type = -1;
-  int metric = -1;
-
-  /* Get metric value. */
-  if (argc >= 1)
-    if (!str2metric (argv[0], &metric))
-      return CMD_WARNING;
-
-  /* Get metric type. */
-  if (argc >= 2)
-    if (!str2metric_type (argv[1], &type))
-      return CMD_WARNING;
-
-  if (argc == 3)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[2]);
-  else
-    ospf_routemap_unset (ospf, DEFAULT_ROUTE);
-
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ALWAYS,
-					type, metric);
-}
-
-ALIAS (ospf_default_information_originate_always_metric_type_routemap,
-       ospf_default_information_originate_always_metric_type_cmd,
-       "default-information originate always metric <0-16777214> metric-type (1|2)",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n"
-       "OSPF default metric\n"
-       "OSPF metric\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n")
-
-ALIAS (ospf_default_information_originate_always_metric_type_routemap,
-       ospf_default_information_originate_always_metric_cmd,
-       "default-information originate always metric <0-16777214>",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n"
-       "OSPF default metric\n"
-       "OSPF metric\n"
-       "OSPF metric type for default routes\n")
-
-ALIAS (ospf_default_information_originate_always_metric_type_routemap,
-       ospf_default_information_originate_always_cmd,
-       "default-information originate always",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n")
-
-DEFUN (ospf_default_information_originate_always_metric_routemap,
-       ospf_default_information_originate_always_metric_routemap_cmd,
-       "default-information originate always metric <0-16777214> route-map WORD",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n"
-       "OSPF default metric\n"
-       "OSPF metric\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int metric = -1;
-
-  /* Get metric value. */
-  if (argc >= 1)
-    if (!str2metric (argv[0], &metric))
-      return CMD_WARNING;
-
-  if (argc == 2)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[1]);
-  else
-    ospf_routemap_unset (ospf, DEFAULT_ROUTE);
-
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ALWAYS,
-					-1, metric);
-}
-
-DEFUN (ospf_default_information_originate_always_routemap,
-       ospf_default_information_originate_always_routemap_cmd,
-       "default-information originate always route-map WORD",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-
-  if (argc == 1)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[0]);
-  else
-    ospf_routemap_unset (ospf, DEFAULT_ROUTE);
-
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ALWAYS, -1, -1);
-}
-
-DEFUN (ospf_default_information_originate_always_type_metric_routemap,
-       ospf_default_information_originate_always_type_metric_routemap_cmd,
-       "default-information originate always metric-type (1|2) metric <0-16777214> route-map WORD",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "OSPF default metric\n"
-       "OSPF metric\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int type = -1;
-  int metric = -1;
-
-  /* Get metric type. */
-  if (argc >= 1)
-    if (!str2metric_type (argv[0], &type))
-      return CMD_WARNING;
-
-  /* Get metric value. */
-  if (argc >= 2)
-    if (!str2metric (argv[1], &metric))
-      return CMD_WARNING;
-
-  if (argc == 3)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[2]);
-  else
-    ospf_routemap_unset (ospf, DEFAULT_ROUTE);
-
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ALWAYS,
-					type, metric);
-}
-
-ALIAS (ospf_default_information_originate_always_type_metric_routemap,
-       ospf_default_information_originate_always_type_metric_cmd,
-       "default-information originate always metric-type (1|2) metric <0-16777214>",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "OSPF default metric\n"
-       "OSPF metric\n")
-
-ALIAS (ospf_default_information_originate_always_type_metric_routemap,
-       ospf_default_information_originate_always_type_cmd,
-       "default-information originate always metric-type (1|2)",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n")
-
-DEFUN (ospf_default_information_originate_always_type_routemap,
-       ospf_default_information_originate_always_type_routemap_cmd,
-       "default-information originate always metric-type (1|2) route-map WORD",
-       "Control distribution of default information\n"
-       "Distribute a default route\n"
-       "Always advertise default route\n"
-       "OSPF metric type for default routes\n"
-       "Set OSPF External Type 1 metrics\n"
-       "Set OSPF External Type 2 metrics\n"
-       "Route map reference\n"
-       "Pointer to route-map entries\n")
-{
-  struct ospf *ospf = vty->index;
-  int type = -1;
-
-  /* Get metric type. */
-  if (argc >= 1)
-    if (!str2metric_type (argv[0], &type))
-      return CMD_WARNING;
-
-  if (argc == 2)
-    ospf_routemap_set (ospf, DEFAULT_ROUTE, argv[1]);
-  else
-    ospf_routemap_unset (ospf, DEFAULT_ROUTE);
-
-  return ospf_redistribute_default_set (ospf, DEFAULT_ORIGINATE_ALWAYS,
-					type, -1);
 }
 
 DEFUN (no_ospf_default_information_originate,
@@ -6549,14 +6035,33 @@ DEFUN (no_ospf_distance,
 
 DEFUN (no_ospf_distance_ospf,
        no_ospf_distance_ospf_cmd,
-       "no distance ospf",
+       "no distance ospf {intra-area|inter-area|external}",
        NO_STR
        "Define an administrative distance\n"
        "OSPF Administrative distance\n"
-       "OSPF Distance\n")
+       "OSPF Distance\n"
+       "Intra-area routes\n"
+       "Inter-area routes\n"
+       "External routes\n")
 {
   struct ospf *ospf = vty->index;
 
+  if (argc < 3)
+    return CMD_WARNING;
+
+  if (argv[0] != NULL)
+    ospf->distance_intra = 0;
+
+  if (argv[1] != NULL)
+    ospf->distance_inter = 0;
+
+  if (argv[2] != NULL)
+    ospf->distance_external = 0;
+
+  if (argv[0] || argv[1] || argv[2])
+    return CMD_SUCCESS;
+
+  /* If no arguments are given, clear all distance information */
   ospf->distance_intra = 0;
   ospf->distance_inter = 0;
   ospf->distance_external = 0;
@@ -6564,60 +6069,10 @@ DEFUN (no_ospf_distance_ospf,
   return CMD_SUCCESS;
 }
 
-DEFUN (ospf_distance_ospf_intra,
-       ospf_distance_ospf_intra_cmd,
-       "distance ospf intra-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_intra = atoi (argv[0]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_intra_inter,
-       ospf_distance_ospf_intra_inter_cmd,
-       "distance ospf intra-area <1-255> inter-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_intra = atoi (argv[0]);
-  ospf->distance_inter = atoi (argv[1]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_intra_external,
-       ospf_distance_ospf_intra_external_cmd,
-       "distance ospf intra-area <1-255> external <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n"
-       "External routes\n"
-       "Distance for external routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_intra = atoi (argv[0]);
-  ospf->distance_external = atoi (argv[1]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_intra_inter_external,
-       ospf_distance_ospf_intra_inter_external_cmd,
-       "distance ospf intra-area <1-255> inter-area <1-255> external <1-255>",
+DEFUN (ospf_distance_ospf,
+       ospf_distance_ospf_cmd,
+       "distance ospf "
+         "{intra-area <1-255>|inter-area <1-255>|external <1-255>}",
        "Define an administrative distance\n"
        "OSPF Administrative distance\n"
        "Intra-area routes\n"
@@ -6629,216 +6084,24 @@ DEFUN (ospf_distance_ospf_intra_inter_external,
 {
   struct ospf *ospf = vty->index;
 
-  ospf->distance_intra = atoi (argv[0]);
-  ospf->distance_inter = atoi (argv[1]);
-  ospf->distance_external = atoi (argv[2]);
+  if (argc < 3) /* should not happen */
+    return CMD_WARNING;
 
-  return CMD_SUCCESS;
-}
+  if (!argv[0] && !argv[1] && !argv[2])
+    {
+      vty_out(vty, "%% Command incomplete. (Arguments required)%s",
+              VTY_NEWLINE);
+      return CMD_WARNING;
+    }
 
-DEFUN (ospf_distance_ospf_intra_external_inter,
-       ospf_distance_ospf_intra_external_inter_cmd,
-       "distance ospf intra-area <1-255> external <1-255> inter-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n"
-       "External routes\n"
-       "Distance for external routes\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n")
-{
-  struct ospf *ospf = vty->index;
+  if (argv[0] != NULL)
+    ospf->distance_intra = atoi(argv[0]);
 
-  ospf->distance_intra = atoi (argv[0]);
-  ospf->distance_external = atoi (argv[1]);
-  ospf->distance_inter = atoi (argv[2]);
+  if (argv[1] != NULL)
+    ospf->distance_inter = atoi(argv[1]);
 
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_inter,
-       ospf_distance_ospf_inter_cmd,
-       "distance ospf inter-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_inter = atoi (argv[0]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_inter_intra,
-       ospf_distance_ospf_inter_intra_cmd,
-       "distance ospf inter-area <1-255> intra-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_inter = atoi (argv[0]);
-  ospf->distance_intra = atoi (argv[1]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_inter_external,
-       ospf_distance_ospf_inter_external_cmd,
-       "distance ospf inter-area <1-255> external <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n"
-       "External routes\n"
-       "Distance for external routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_inter = atoi (argv[0]);
-  ospf->distance_external = atoi (argv[1]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_inter_intra_external,
-       ospf_distance_ospf_inter_intra_external_cmd,
-       "distance ospf inter-area <1-255> intra-area <1-255> external <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n"
-       "External routes\n"
-       "Distance for external routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_inter = atoi (argv[0]);
-  ospf->distance_intra = atoi (argv[1]);
-  ospf->distance_external = atoi (argv[2]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_inter_external_intra,
-       ospf_distance_ospf_inter_external_intra_cmd,
-       "distance ospf inter-area <1-255> external <1-255> intra-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n"
-       "External routes\n"
-       "Distance for external routes\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_inter = atoi (argv[0]);
-  ospf->distance_external = atoi (argv[1]);
-  ospf->distance_intra = atoi (argv[2]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_external,
-       ospf_distance_ospf_external_cmd,
-       "distance ospf external <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "External routes\n"
-       "Distance for external routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_external = atoi (argv[0]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_external_intra,
-       ospf_distance_ospf_external_intra_cmd,
-       "distance ospf external <1-255> intra-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "External routes\n"
-       "Distance for external routes\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_external = atoi (argv[0]);
-  ospf->distance_intra = atoi (argv[1]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_external_inter,
-       ospf_distance_ospf_external_inter_cmd,
-       "distance ospf external <1-255> inter-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "External routes\n"
-       "Distance for external routes\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_external = atoi (argv[0]);
-  ospf->distance_inter = atoi (argv[1]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_external_intra_inter,
-       ospf_distance_ospf_external_intra_inter_cmd,
-       "distance ospf external <1-255> intra-area <1-255> inter-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "External routes\n"
-       "Distance for external routes\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_external = atoi (argv[0]);
-  ospf->distance_intra = atoi (argv[1]);
-  ospf->distance_inter = atoi (argv[2]);
-
-  return CMD_SUCCESS;
-}
-
-DEFUN (ospf_distance_ospf_external_inter_intra,
-       ospf_distance_ospf_external_inter_intra_cmd,
-       "distance ospf external <1-255> inter-area <1-255> intra-area <1-255>",
-       "Define an administrative distance\n"
-       "OSPF Administrative distance\n"
-       "External routes\n"
-       "Distance for external routes\n"
-       "Inter-area routes\n"
-       "Distance for inter-area routes\n"
-       "Intra-area routes\n"
-       "Distance for intra-area routes\n")
-{
-  struct ospf *ospf = vty->index;
-
-  ospf->distance_external = atoi (argv[0]);
-  ospf->distance_inter = atoi (argv[1]);
-  ospf->distance_intra = atoi (argv[2]);
+  if (argv[2] != NULL)
+    ospf->distance_external = atoi(argv[2]);
 
   return CMD_SUCCESS;
 }
@@ -7001,7 +6264,7 @@ ALIAS (no_ip_ospf_mtu_ignore,
       "IP Information\n"
       "OSPF interface commands\n"
       "Disable mtu mismatch detection\n")
-
+
 DEFUN (ospf_max_metric_router_lsa_admin,
        ospf_max_metric_router_lsa_admin_cmd,
        "max-metric router-lsa administrative",
@@ -7020,6 +6283,10 @@ DEFUN (ospf_max_metric_router_lsa_admin,
       if (!CHECK_FLAG (area->stub_router_state, OSPF_AREA_IS_STUB_ROUTED))
           ospf_router_lsa_update_area (area);
     }
+
+  /* Allows for areas configured later to get the property */
+  ospf->stub_router_admin_set = OSPF_STUB_ROUTER_ADMINISTRATIVE_SET;
+
   return CMD_SUCCESS;
 }
 
@@ -7047,6 +6314,7 @@ DEFUN (no_ospf_max_metric_router_lsa_admin,
           ospf_router_lsa_update_area (area);
         }
     }
+  ospf->stub_router_admin_set = OSPF_STUB_ROUTER_ADMINISTRATIVE_UNSET;
   return CMD_SUCCESS;
 }
 
@@ -7165,7 +6433,7 @@ config_write_stub_router (struct vty *vty, struct ospf *ospf)
     }
   return;
 }
-
+
 static void
 show_ip_ospf_route_network (struct vty *vty, struct route_table *rt)
 {
@@ -7384,7 +6652,7 @@ DEFUN (show_ip_ospf_route,
   return CMD_SUCCESS;
 }
 
-
+
 const char *ospf_abr_type_str[] = 
 {
   "unknown",
@@ -7413,7 +6681,7 @@ area_id2str (char *buf, int length, struct ospf_area *area)
     sprintf (buf, "%lu", (unsigned long) ntohl (area->area_id.s_addr));
 }
 
-
+
 const char *ospf_int_type_str[] = 
 {
   "unknown",		/* should never be used. */
@@ -7847,7 +7115,7 @@ config_write_virtual_link (struct vty *vty, struct ospf *ospf)
   return 0;
 }
 
-
+
 static int
 config_write_ospf_redistribute (struct vty *vty, struct ospf *ospf)
 {
@@ -8140,7 +7408,7 @@ ospf_vty_show_init (void)
   install_element (ENABLE_NODE, &show_ip_ospf_border_routers_cmd);
 }
 
-
+
 /* ospfd's interface node. */
 static struct cmd_node interface_node =
 {
@@ -8260,63 +7528,13 @@ ospf_vty_if_init (void)
 static void
 ospf_vty_zebra_init (void)
 {
-  install_element (OSPF_NODE, &ospf_redistribute_source_type_metric_cmd);
-  install_element (OSPF_NODE, &ospf_redistribute_source_metric_type_cmd);
-  install_element (OSPF_NODE, &ospf_redistribute_source_type_cmd);
-  install_element (OSPF_NODE, &ospf_redistribute_source_metric_cmd);
   install_element (OSPF_NODE, &ospf_redistribute_source_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_redistribute_source_metric_type_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_redistribute_source_type_metric_routemap_cmd);
-  install_element (OSPF_NODE, &ospf_redistribute_source_metric_routemap_cmd);
-  install_element (OSPF_NODE, &ospf_redistribute_source_type_routemap_cmd);
-  install_element (OSPF_NODE, &ospf_redistribute_source_routemap_cmd);
-  
   install_element (OSPF_NODE, &no_ospf_redistribute_source_cmd);
 
   install_element (OSPF_NODE, &ospf_distribute_list_out_cmd);
   install_element (OSPF_NODE, &no_ospf_distribute_list_out_cmd);
 
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_metric_type_cmd);
-  install_element (OSPF_NODE, &ospf_default_information_originate_metric_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_type_metric_cmd);
-  install_element (OSPF_NODE, &ospf_default_information_originate_type_cmd);
   install_element (OSPF_NODE, &ospf_default_information_originate_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_metric_type_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_metric_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_type_metric_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_type_cmd);
-
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_metric_type_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_metric_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_type_metric_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_type_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_metric_type_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_metric_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_type_metric_routemap_cmd);
-  install_element (OSPF_NODE,
-		   &ospf_default_information_originate_always_type_routemap_cmd);
-
   install_element (OSPF_NODE, &no_ospf_default_information_originate_cmd);
 
   install_element (OSPF_NODE, &ospf_default_metric_cmd);
@@ -8326,21 +7544,7 @@ ospf_vty_zebra_init (void)
   install_element (OSPF_NODE, &ospf_distance_cmd);
   install_element (OSPF_NODE, &no_ospf_distance_cmd);
   install_element (OSPF_NODE, &no_ospf_distance_ospf_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_intra_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_intra_inter_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_intra_external_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_intra_inter_external_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_intra_external_inter_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_inter_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_inter_intra_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_inter_external_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_inter_intra_external_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_inter_external_intra_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_external_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_external_intra_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_external_inter_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_external_intra_inter_cmd);
-  install_element (OSPF_NODE, &ospf_distance_ospf_external_inter_intra_cmd);
+  install_element (OSPF_NODE, &ospf_distance_ospf_cmd);
 #if 0
   install_element (OSPF_NODE, &ospf_distance_source_cmd);
   install_element (OSPF_NODE, &no_ospf_distance_source_cmd);
@@ -8356,7 +7560,7 @@ static struct cmd_node ospf_node =
   1
 };
 
-
+
 /* Install OSPF related vty commands. */
 void
 ospf_vty_init (void)

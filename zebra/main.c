@@ -39,6 +39,7 @@
 #include "zebra/router-id.h"
 #include "zebra/irdp.h"
 #include "zebra/rtadv.h"
+#include "zebra/zebra_fpm.h"
 
 /* Zebra instance */
 struct zebra_t zebrad =
@@ -150,7 +151,7 @@ usage (char *progname, int status)
 
   exit (status);
 }
-
+
 /* SIGHUP handler. */
 static void 
 sighup (void)
@@ -202,7 +203,7 @@ struct quagga_signal_t zebra_signals[] =
     .handler = &sigint,
   },
 };
-
+
 /* Main startup routine. */
 int
 main (int argc, char **argv)
@@ -342,12 +343,15 @@ main (int argc, char **argv)
   interface_list ();
   route_read ();
 
-  /* Sort VTY commands. */
-  sort_node ();
-
 #ifdef HAVE_SNMP
   zebra_snmp_init ();
 #endif /* HAVE_SNMP */
+
+#ifdef HAVE_FPM
+  zfpm_init (zebrad.master, 1, 0);
+#else
+  zfpm_init (zebrad.master, 0, 0);
+#endif
 
   /* Process the configuration file. Among other configuration
   *  directives we can meet those installing static routes. Such

@@ -50,7 +50,7 @@
 #include "ospfd/ospf_ase.h"
 #include "ospfd/ospf_zebra.h"
 
-
+
 u_int32_t
 get_metric (u_char *metric)
 {
@@ -61,7 +61,7 @@ get_metric (u_char *metric)
   return m;
 }
 
-
+
 struct timeval
 tv_adjust (struct timeval a)
 {
@@ -159,7 +159,7 @@ ospf_lsa_refresh_delay (struct ospf_lsa *lsa)
   return delay;
 }
 
-
+
 int
 get_age (struct ospf_lsa *lsa)
 {
@@ -171,7 +171,7 @@ get_age (struct ospf_lsa *lsa)
   return age;
 }
 
-
+
 /* Fletcher Checksum -- Refer to RFC1008. */
 
 /* All the offsets are zero-based. The offsets in the RFC1008 are 
@@ -205,7 +205,7 @@ ospf_lsa_checksum_valid (struct lsa_header *lsa)
 }
 
 
-
+
 /* Create OSPF LSA. */
 struct ospf_lsa *
 ospf_lsa_new ()
@@ -341,7 +341,7 @@ ospf_lsa_data_free (struct lsa_header *lsah)
   XFREE (MTYPE_OSPF_LSA_DATA, lsah);
 }
 
-
+
 /* LSA general functions. */
 
 const char *
@@ -393,7 +393,7 @@ lsa_header_set (struct stream *s, u_char options,
 
   stream_forward_endp (s, OSPF_LSA_HEADER_SIZE);
 }
-
+
 
 /* router-LSA related functions. */
 /* Get router-LSA flags. */
@@ -568,6 +568,9 @@ lsa_link_broadcast_set (struct stream *s, struct ospf_interface *oi)
   /* Describe Type 3 Link. */
   if (oi->state == ISM_Waiting)
     {
+      if (IS_DEBUG_OSPF (lsa, LSA_GENERATE))
+        zlog_debug ("LSA[Type1]: Interface %s is in state Waiting. "
+                    "Adding stub interface", oi->ifp->name);
       masklen2ip (oi->address->prefixlen, &mask);
       id.s_addr = oi->address->u.prefix4.s_addr & mask.s_addr;
       return link_info_set (s, id, mask, LSA_LINK_TYPE_STUB, 0,
@@ -580,12 +583,18 @@ lsa_link_broadcast_set (struct stream *s, struct ospf_interface *oi)
 	     IPV4_ADDR_SAME (&oi->address->u.prefix4, &DR (oi))) &&
       ospf_nbr_count (oi, NSM_Full) > 0)
     {
+      if (IS_DEBUG_OSPF (lsa, LSA_GENERATE))
+        zlog_debug ("LSA[Type1]: Interface %s has a DR. "
+                    "Adding transit interface", oi->ifp->name);
       return link_info_set (s, DR (oi), oi->address->u.prefix4,
                             LSA_LINK_TYPE_TRANSIT, 0, cost);
     }
   /* Describe type 3 link. */
   else
     {
+      if (IS_DEBUG_OSPF (lsa, LSA_GENERATE))
+        zlog_debug ("LSA[Type1]: Interface %s has no DR. "
+                    "Adding stub interface", oi->ifp->name);
       masklen2ip (oi->address->prefixlen, &mask);
       id.s_addr = oi->address->u.prefix4.s_addr & mask.s_addr;
       return link_info_set (s, id, mask, LSA_LINK_TYPE_STUB, 0,
@@ -737,7 +746,7 @@ ospf_router_lsa_body_set (struct stream *s, struct ospf_area *area)
   /* Set # of links here. */
   stream_putw_at (s, putp, cnt);
 }
-
+
 static int
 ospf_stub_router_timer (struct thread *t)
 {
@@ -794,7 +803,7 @@ ospf_stub_router_check (struct ospf_area *area)
   OSPF_AREA_TIMER_ON (area->t_stub_router, ospf_stub_router_timer,
                       area->ospf->stub_router_startup_time);
 }
- 
+ 
 /* Create new router-LSA. */
 static struct ospf_lsa *
 ospf_router_lsa_new (struct ospf_area *area)
@@ -996,7 +1005,7 @@ ospf_router_lsa_update (struct ospf *ospf)
   return 0;
 }
 
-
+
 /* network-LSA related functions. */
 /* Originate Network-LSA. */
 static void
@@ -1175,7 +1184,7 @@ ospf_network_lsa_refresh (struct ospf_lsa *lsa)
 
   return new;
 }
-
+
 static void
 stream_put_ospf_metric (struct stream *s, u_int32_t metric_value)
 {
@@ -1334,18 +1343,14 @@ ospf_summary_lsa_refresh (struct ospf *ospf, struct ospf_lsa *lsa)
   return new;
 }
 
-
+
 /* summary-ASBR-LSA related functions. */
 static void
 ospf_summary_asbr_lsa_body_set (struct stream *s, struct prefix *p,
 				u_int32_t metric)
 {
-  struct in_addr mask;
-
-  masklen2ip (p->prefixlen, &mask);
-
   /* Put Network Mask. */
-  stream_put_ipv4 (s, mask.s_addr);
+  stream_put_ipv4 (s, (u_int32_t) 0);
 
   /* Set # TOS. */
   stream_putc (s, (u_char) 0);
@@ -2372,7 +2377,7 @@ ospf_external_lsa_refresh (struct ospf *ospf, struct ospf_lsa *lsa,
   return new;
 }
 
-
+
 /* LSA installation functions. */
 
 /* Install router-LSA to an area. */
@@ -2404,8 +2409,7 @@ ospf_router_lsa_install (struct ospf *ospf, struct ospf_lsa *new,
       ospf_refresher_register_lsa (ospf, new);
     }
   if (rt_recalc)
-    ospf_spf_calculate_schedule (ospf);
-
+    ospf_spf_calculate_schedule (ospf, SPF_FLAG_ROUTER_LSA_INSTALL);
   return new;
 }
 
@@ -2439,7 +2443,7 @@ ospf_network_lsa_install (struct ospf *ospf,
       ospf_refresher_register_lsa (ospf, new);
     }
   if (rt_recalc)
-    ospf_spf_calculate_schedule (ospf);
+    ospf_spf_calculate_schedule (ospf, SPF_FLAG_NETWORK_LSA_INSTALL);
 
   return new;
 }
@@ -2462,11 +2466,9 @@ ospf_summary_lsa_install (struct ospf *ospf, struct ospf_lsa *new,
       /* This doesn't exist yet... */
       ospf_summary_incremental_update(new); */
 #else /* #if 0 */
-      ospf_spf_calculate_schedule (ospf);
+      ospf_spf_calculate_schedule (ospf, SPF_FLAG_SUMMARY_LSA_INSTALL);
 #endif /* #if 0 */
  
-      if (IS_DEBUG_OSPF (lsa, LSA_INSTALL))
-	zlog_debug ("ospf_summary_lsa_install(): SPF scheduled");
     }
 
   if (IS_LSA_SELF (new))
@@ -2495,7 +2497,7 @@ ospf_summary_asbr_lsa_install (struct ospf *ospf, struct ospf_lsa *new,
 	 - RFC 2328 Section 16.5 implies it should be */
       /* ospf_ase_calculate_schedule(); */
 #else  /* #if 0 */
-      ospf_spf_calculate_schedule (ospf);
+      ospf_spf_calculate_schedule (ospf, SPF_FLAG_ASBR_SUMMARY_LSA_INSTALL);
 #endif /* #if 0 */
     }
 
@@ -2737,7 +2739,9 @@ ospf_lsa_install (struct ospf *ospf, struct ospf_interface *oi,
       if (IS_LSA_SELF (lsa))
 	lsa->oi = oi; /* Specify outgoing ospf-interface for this LSA. */
       else
-	; /* Incoming "oi" for this LSA has set at LSUpd reception. */
+        {
+          /* Incoming "oi" for this LSA has set at LSUpd reception. */
+        }
       /* Fallthrough */
     case OSPF_OPAQUE_AREA_LSA:
     case OSPF_OPAQUE_AS_LSA:
@@ -2782,22 +2786,21 @@ ospf_lsa_install (struct ospf *ospf, struct ospf_interface *oi,
      If received LSA' ls_age is MaxAge, or lsa is being prematurely aged
      (it's getting flushed out of the area), set LSA on MaxAge LSA list. 
    */
-  if ((lsa->flags & OSPF_LSA_PREMATURE_AGE) ||
-      (IS_LSA_MAXAGE (new) && !IS_LSA_SELF (new)))
+  if (IS_LSA_MAXAGE (new))
     {
       if (IS_DEBUG_OSPF (lsa, LSA_INSTALL))
         zlog_debug ("LSA[Type%d:%s]: Install LSA 0x%p, MaxAge",
                    new->data->type, 
                    inet_ntoa (new->data->id), 
                    lsa);
-      ospf_lsa_flush (ospf, lsa);
+      ospf_lsa_maxage (ospf, lsa);
     }
 
   return new;
 }
 
-
-static int
+
+int
 ospf_check_nbr_status (struct ospf *ospf)
 {
   struct listnode *node, *nnode;
@@ -2821,14 +2824,14 @@ ospf_check_nbr_status (struct ospf *ospf)
   return 1;
 }
 
-
+
 
 static int
 ospf_maxage_lsa_remover (struct thread *thread)
 {
   struct ospf *ospf = THREAD_ARG (thread);
   struct ospf_lsa *lsa;
-  struct listnode *node, *nnode;
+  struct route_node *rn;
   int reschedule = 0;
 
   ospf->t_maxage = NULL;
@@ -2839,8 +2842,16 @@ ospf_maxage_lsa_remover (struct thread *thread)
   reschedule = !ospf_check_nbr_status (ospf);
 
   if (!reschedule)
-    for (ALL_LIST_ELEMENTS (ospf->maxage_lsa, node, nnode, lsa))
+    for (rn = route_top(ospf->maxage_lsa); rn; rn = route_next(rn))
       {
+	if ((lsa = rn->info) == NULL)
+	  {
+	    continue;
+	  }
+
+        /* There is at least one neighbor from which we still await an ack
+         * for that LSA, so we are not allowed to remove it from our lsdb yet
+         * as per RFC 2328 section 14 para 4 a) */
         if (lsa->retransmit_counter > 0)
           {
             reschedule = 1;
@@ -2849,7 +2860,11 @@ ospf_maxage_lsa_remover (struct thread *thread)
         
         /* TODO: maybe convert this function to a work-queue */
         if (thread_should_yield (thread))
-          OSPF_TIMER_ON (ospf->t_maxage, ospf_maxage_lsa_remover, 0);
+          {
+            OSPF_TIMER_ON (ospf->t_maxage, ospf_maxage_lsa_remover, 0);
+            route_unlock_node(rn); /* route_top/route_next */
+            return 0;
+          }
           
         /* Remove LSA from the LSDB */
         if (IS_LSA_SELF (lsa))
@@ -2893,13 +2908,24 @@ ospf_maxage_lsa_remover (struct thread *thread)
 void
 ospf_lsa_maxage_delete (struct ospf *ospf, struct ospf_lsa *lsa)
 {
-  struct listnode *n;
+  struct route_node *rn;
+  struct prefix_ptr lsa_prefix;
 
-  if ((n = listnode_lookup (ospf->maxage_lsa, lsa)))
+  lsa_prefix.family = 0;
+  lsa_prefix.prefixlen = sizeof(lsa_prefix.prefix) * CHAR_BIT;
+  lsa_prefix.prefix = (uintptr_t) lsa;
+
+  if ((rn = route_node_lookup(ospf->maxage_lsa,
+			      (struct prefix *)&lsa_prefix)))
     {
-      list_delete_node (ospf->maxage_lsa, n);
-      UNSET_FLAG(lsa->flags, OSPF_LSA_IN_MAXAGE);
-      ospf_lsa_unlock (&lsa); /* maxage_lsa */
+      if (rn->info == lsa)
+	{
+	  UNSET_FLAG(lsa->flags, OSPF_LSA_IN_MAXAGE);
+	  ospf_lsa_unlock (&lsa); /* maxage_lsa */
+	  rn->info = NULL;
+	  route_unlock_node (rn); /* unlock node because lsa is deleted */
+	}
+      route_unlock_node (rn); /* route_node_lookup */
     }
 }
 
@@ -2911,6 +2937,9 @@ ospf_lsa_maxage_delete (struct ospf *ospf, struct ospf_lsa *lsa)
 void
 ospf_lsa_maxage (struct ospf *ospf, struct ospf_lsa *lsa)
 {
+  struct prefix_ptr lsa_prefix;
+  struct route_node *rn;
+
   /* When we saw a MaxAge LSA flooded to us, we put it on the list
      and schedule the MaxAge LSA remover. */
   if (CHECK_FLAG(lsa->flags, OSPF_LSA_IN_MAXAGE))
@@ -2921,8 +2950,31 @@ ospf_lsa_maxage (struct ospf *ospf, struct ospf_lsa *lsa)
       return;
     }
 
-  listnode_add (ospf->maxage_lsa, ospf_lsa_lock (lsa));
-  SET_FLAG(lsa->flags, OSPF_LSA_IN_MAXAGE);
+  lsa_prefix.family = 0;
+  lsa_prefix.prefixlen = sizeof(lsa_prefix.prefix) * CHAR_BIT;
+  lsa_prefix.prefix = (uintptr_t) lsa;
+
+  if ((rn = route_node_get (ospf->maxage_lsa,
+			    (struct prefix *)&lsa_prefix)) != NULL)
+    {
+      if (rn->info != NULL)
+	{
+	  if (IS_DEBUG_OSPF (lsa, LSA_FLOODING))
+	    zlog_debug ("LSA[%s]: found LSA (%p) in table for LSA %p %d",
+			dump_lsa_key (lsa), rn->info, lsa, lsa_prefix.prefixlen);
+	  route_unlock_node (rn);
+	}
+      else
+	{
+	  rn->info = ospf_lsa_lock(lsa);
+	  SET_FLAG(lsa->flags, OSPF_LSA_IN_MAXAGE);
+	}
+    }
+  else
+    {
+      zlog_err("Unable to allocate memory for maxage lsa\n");
+      assert(0);
+    }
 
   if (IS_DEBUG_OSPF (lsa, LSA_FLOODING))
     zlog_debug ("LSA[%s]: MaxAge LSA remover scheduled.", dump_lsa_key (lsa));
@@ -2967,7 +3019,7 @@ ospf_lsa_maxage_walker_remover (struct ospf *ospf, struct ospf_lsa *lsa)
 	    ospf_ase_incremental_update (ospf, lsa);
             break;
           default:
-	    ospf_spf_calculate_schedule (ospf);
+	    ospf_spf_calculate_schedule (ospf, SPF_FLAG_MAXAGE);
             break;
           }
 	ospf_lsa_maxage (ospf, lsa);
@@ -3484,7 +3536,7 @@ ospf_lsa_unique_id (struct ospf *ospf,
   return id;
 }
 
-
+
 #define LSA_ACTION_FLOOD_AREA 1
 #define LSA_ACTION_FLUSH_AREA 2
 
@@ -3547,7 +3599,7 @@ ospf_schedule_lsa_flush_area (struct ospf_area *area, struct ospf_lsa *lsa)
   thread_add_event (master, ospf_lsa_action, data, 0);
 }
 
-
+
 /* LSA Refreshment functions. */
 struct ospf_lsa *
 ospf_lsa_refresh (struct ospf *ospf, struct ospf_lsa *lsa)

@@ -34,7 +34,7 @@
 
 #include "zebra/rib.h"
 #include "zebra/zserv.h"
-
+
 #define IPFWMIB 1,3,6,1,2,1,4,24
 
 /* ipForwardTable */
@@ -78,7 +78,7 @@
 #define ROWSTATUS ASN_INTEGER
 #define IPADDRESS ASN_IPADDRESS
 #define OBJECTIDENTIFIER ASN_OBJECT_ID
-
+
 extern struct zebra_t zebrad;
 
 oid ipfw_oid [] = { IPFWMIB };
@@ -130,7 +130,7 @@ struct variable zebra_variables[] =
     {IPCIDRROUTESTATUS, ROWSTATUS, RONLY, ipCidrTable, 3, {4, 1, 16}}
   };
 
-
+
 static u_char *
 ipFwNumber (struct variable *v, oid objid[], size_t *objid_len,
 	    int exact, size_t *val_len, WriteMethod **write_method)
@@ -150,7 +150,7 @@ ipFwNumber (struct variable *v, oid objid[], size_t *objid_len,
   /* Return number of routing entries. */
   result = 0;
   for (rn = route_top (table); rn; rn = route_next (rn))
-    for (rib = rn->info; rib; rib = rib->next)
+    RNODE_FOREACH_RIB (rn, rib)
       result++;
 
   return (u_char *)&result;
@@ -175,7 +175,7 @@ ipCidrNumber (struct variable *v, oid objid[], size_t *objid_len,
   /* Return number of routing entries. */
   result = 0;
   for (rn = route_top (table); rn; rn = route_next (rn))
-    for (rib = rn->info; rib; rib = rib->next)
+    RNODE_FOREACH_RIB (rn, rib)
       result++;
 
   return (u_char *)&result;
@@ -245,6 +245,12 @@ proto_trans(int type)
       return 1; /* shouldn't happen */
     case ZEBRA_ROUTE_BGP:
       return 14; /* bgp */
+    case ZEBRA_ROUTE_HSLS:
+      return 1; /* other */
+    case ZEBRA_ROUTE_OLSR:
+      return 1; /* other */
+    case ZEBRA_ROUTE_BATMAN:
+      return 1; /* other */
     default:
       return 1; /* other */
     }
@@ -369,7 +375,7 @@ get_fwtable_route_node(struct variable *v, oid objid[], size_t *objid_len,
 	{
 	  if (!in_addr_cmp(&(*np)->p.u.prefix, (u_char *)&dest))
 	    {
-	      for (*rib = (*np)->info; *rib; *rib = (*rib)->next)
+	      RNODE_FOREACH_RIB (*np, *rib)
 	        {
 		  if (!in_addr_cmp((u_char *)&(*rib)->nexthop->gate.ipv4,
 				   (u_char *)&nexthop))
@@ -388,12 +394,12 @@ get_fwtable_route_node(struct variable *v, oid objid[], size_t *objid_len,
 
       /* Check destination first */
       if (in_addr_cmp(&np2->p.u.prefix, (u_char *)&dest) > 0)
-        for (rib2 = np2->info; rib2; rib2 = rib2->next)
+	RNODE_FOREACH_RIB (np2, rib2)
 	  check_replace(np2, rib2, np, rib);
 
       if (in_addr_cmp(&np2->p.u.prefix, (u_char *)&dest) == 0)
         { /* have to look at each rib individually */
-          for (rib2 = np2->info; rib2; rib2 = rib2->next)
+	  RNODE_FOREACH_RIB (np2, rib2)
 	    {
 	      int proto2, policy2;
 

@@ -53,7 +53,7 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 #include "ospfd/ospf_route.h"
 #include "ospfd/ospf_ase.h"
 
-
+
 
 /* OSPF process wide configuration. */
 static struct ospf_master ospf_master;
@@ -64,7 +64,7 @@ struct ospf_master *om;
 extern struct zclient *zclient;
 extern struct in_addr router_id_zebra;
 
-
+
 static void ospf_remove_vls_through_area (struct ospf *, struct ospf_area *);
 static void ospf_network_free (struct ospf *, struct ospf_network *);
 static void ospf_area_free (struct ospf_area *);
@@ -76,7 +76,7 @@ static int ospf_network_match_iface (const struct connected *,
 static void ospf_finish_final (struct ospf *);
 
 #define OSPF_EXTERNAL_LSA_ORIGINATE_DELAY 1
-
+
 void
 ospf_router_id_update (struct ospf *ospf)
 {
@@ -139,7 +139,7 @@ ospf_router_id_update (struct ospf *ospf)
         ospf_if_update (ospf, ifp);
     }
 }
-
+
 /* For OSPF area sort by area id. */
 static int
 ospf_area_id_cmp (struct ospf_area *a1, struct ospf_area *a2)
@@ -182,7 +182,8 @@ ospf_new (void)
   
   new->stub_router_startup_time = OSPF_STUB_ROUTER_UNCONFIGURED;
   new->stub_router_shutdown_time = OSPF_STUB_ROUTER_UNCONFIGURED;
-  
+  new->stub_router_admin_set     = OSPF_STUB_ROUTER_ADMINISTRATIVE_UNSET;
+
   /* Distribute parameter init. */
   for (i = 0; i <= ZEBRA_ROUTE_MAX; i++)
     {
@@ -199,8 +200,8 @@ ospf_new (void)
   new->spf_hold_multiplier = 1;
 
   /* MaxAge init. */
-  new->maxage_delay = OSFP_LSA_MAXAGE_REMOVE_DELAY_DEFAULT;
-  new->maxage_lsa = list_new ();
+  new->maxage_delay = OSPF_LSA_MAXAGE_REMOVE_DELAY_DEFAULT;
+  new->maxage_lsa = route_table_init();
   new->t_maxage_walker =
     thread_add_timer (master, ospf_lsa_maxage_walker,
                       new, OSPF_LSA_MAXAGE_CHECK_INTERVAL);
@@ -222,7 +223,7 @@ ospf_new (void)
     }
   new->maxsndbuflen = getsockopt_so_sendbuf (new->fd);
   if (IS_DEBUG_OSPF (zebra, ZEBRA_INTERFACE))
-    zlog_debug ("%s: starting with OSPF send buffer size %d",
+    zlog_debug ("%s: starting with OSPF send buffer size %u",
       __func__, new->maxsndbuflen);
   if ((new->ibuf = stream_new(OSPF_MAX_PACKET_SIZE+1)) == NULL)
     {
@@ -278,7 +279,7 @@ ospf_get ()
 
   return ospf;
 }
-
+
 /* Handle the second half of deferred shutdown. This is called either
  * from the deferred-shutdown timer thread, or directly through
  * ospf_deferred_shutdown_check.
@@ -353,7 +354,7 @@ ospf_deferred_shutdown_check (struct ospf *ospf)
                  timeout);
   return;
 }
-
+
 /* Shut down the entire process */
 void
 ospf_terminate (void)
@@ -501,10 +502,18 @@ ospf_finish_final (struct ospf *ospf)
   ospf_lsdb_delete_all (ospf->lsdb);
   ospf_lsdb_free (ospf->lsdb);
 
-  for (ALL_LIST_ELEMENTS (ospf->maxage_lsa, node, nnode, lsa))
-    ospf_lsa_unlock (&lsa); /* maxage_lsa */
+  for (rn = route_top (ospf->maxage_lsa); rn; rn = route_next (rn))
+    {
+      struct ospf_lsa *lsa;
 
-  list_delete (ospf->maxage_lsa);
+      if ((lsa = rn->info) != NULL)
+	{
+	  ospf_lsa_unlock (&lsa);
+	  rn->info = NULL;
+	}
+      route_unlock_node (rn);
+    }
+  route_table_finish (ospf->maxage_lsa);
 
   if (ospf->old_table)
     ospf_route_table_free (ospf->old_table);
@@ -554,7 +563,7 @@ ospf_finish_final (struct ospf *ospf)
   XFREE (MTYPE_OSPF_TOP, ospf);
 }
 
-
+
 /* allocate new OSPF Area object */
 static struct ospf_area *
 ospf_area_new (struct ospf *ospf, struct in_addr area_id)
@@ -676,6 +685,10 @@ ospf_area_get (struct ospf *ospf, struct in_addr area_id, int format)
       area->format = format;
       listnode_add_sort (ospf->areas, area);
       ospf_check_abr_status (ospf);  
+      if (ospf->stub_router_admin_set == OSPF_STUB_ROUTER_ADMINISTRATIVE_SET)
+        {
+          SET_FLAG (area->stub_router_state, OSPF_AREA_ADMIN_STUB_ROUTED);
+        }
     }
 
   return area;
@@ -706,7 +719,7 @@ ospf_area_del_if (struct ospf_area *area, struct ospf_interface *oi)
   listnode_delete (area->oiflist, oi);
 }
 
-
+
 /* Config network statement related functions. */
 static struct ospf_network *
 ospf_network_new (struct in_addr area_id, int format)
@@ -814,7 +827,10 @@ ospf_network_unset (struct ospf *ospf, struct prefix_ipv4 *p,
         }
 
       if (found == 0)
-        ospf_if_free (oi);
+	{
+	  ospf_if_free (oi);
+	  ospf_area_check_free (ospf, area_id);
+	}
     }
   
   /* Update connected redistribute. */
@@ -974,7 +990,7 @@ ospf_remove_vls_through_area (struct ospf *ospf, struct ospf_area *area)
       ospf_vl_delete (ospf, vl_data);
 }
 
-
+
 static const struct message ospf_area_type_msg[] =
 {
   { OSPF_AREA_DEFAULT,	"Default" },
@@ -1337,7 +1353,7 @@ ospf_timers_refresh_unset (struct ospf *ospf)
   return 1;
 }
 
-
+
 static struct ospf_nbr_nbma *
 ospf_nbr_nbma_new (void)
 {

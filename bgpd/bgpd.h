@@ -104,6 +104,8 @@ struct bgp
   as_t *confed_peers;
   int confed_peers_cnt;
 
+  struct thread *t_startup;
+
   /* BGP flags. */
   u_int16_t flags;
 #define BGP_FLAG_ALWAYS_COMPARE_MED       (1 << 0)
@@ -120,6 +122,7 @@ struct bgp
 #define BGP_FLAG_LOG_NEIGHBOR_CHANGES     (1 << 11)
 #define BGP_FLAG_GRACEFUL_RESTART         (1 << 12)
 #define BGP_FLAG_ASPATH_CONFED            (1 << 13)
+#define BGP_FLAG_ASPATH_MULTIPATH_RELAX   (1 << 14)
 
   /* BGP Per AF flags */
   u_int16_t af_flags[AFI_MAX][SAFI_MAX];
@@ -312,6 +315,12 @@ struct peer
   struct stream_fifo *obuf;
   struct stream *work;
 
+  /* We use a separate stream to encode MP_REACH_NLRI for efficient
+   * NLRI packing. peer->work stores all the other attributes. The
+   * actual packet is then constructed by concatenating the two.
+   */
+  struct stream *scratch;
+
   /* Status of the peer. */
   int status;
   int ostatus;
@@ -359,6 +368,8 @@ struct peer
 #define PEER_CAP_RESTART_RCV                (1 << 6) /* restart received */
 #define PEER_CAP_AS4_ADV                    (1 << 7) /* as4 advertised */
 #define PEER_CAP_AS4_RCV                    (1 << 8) /* as4 received */
+#define PEER_CAP_RESTART_BIT_ADV            (1 << 9) /* sent restart state */
+#define PEER_CAP_RESTART_BIT_RCV            (1 << 10) /* peer restart state */
 
   /* Capability flags (reset in bgp_stop) */
   u_int16_t af_cap[AFI_MAX][SAFI_MAX];
@@ -381,6 +392,7 @@ struct peer
 #define PEER_FLAG_DYNAMIC_CAPABILITY        (1 << 5) /* dynamic capability */
 #define PEER_FLAG_DISABLE_CONNECTED_CHECK   (1 << 6) /* disable-connected-check */
 #define PEER_FLAG_LOCAL_AS_NO_PREPEND       (1 << 7) /* local-as no-prepend */
+#define PEER_FLAG_LOCAL_AS_REPLACE_AS       (1 << 8) /* local-as no-prepend replace-as */
 
   /* NSF mode (graceful restart) */
   u_char nsf[AFI_MAX][SAFI_MAX];
@@ -404,6 +416,7 @@ struct peer
 #define PEER_FLAG_MAX_PREFIX                (1 << 14) /* maximum prefix */
 #define PEER_FLAG_MAX_PREFIX_WARNING        (1 << 15) /* maximum prefix warning-only */
 #define PEER_FLAG_NEXTHOP_LOCAL_UNCHANGED   (1 << 16) /* leave link-local nexthop unchanged */
+#define PEER_FLAG_NEXTHOP_SELF_ALL          (1 << 17) /* next-hop-self all */
 
   /* MD5 password */
   char *password;
@@ -731,6 +744,7 @@ struct bgp_nlri
 /* BGP timers default value.  */
 #define BGP_INIT_START_TIMER                     5
 #define BGP_ERROR_START_TIMER                   30
+#define BGP_LARGE_HOLDTIME                     240
 #define BGP_DEFAULT_HOLDTIME                   180
 #define BGP_DEFAULT_KEEPALIVE                   60 
 #define BGP_DEFAULT_ASORIGINATE                 15
@@ -776,6 +790,8 @@ enum bgp_clear_type
 /* Macros. */
 #define BGP_INPUT(P)         ((P)->ibuf)
 #define BGP_INPUT_PNT(P)     (STREAM_PNT(BGP_INPUT(P)))
+#define BGP_IS_VALID_STATE_FOR_NOTIF(S)\
+        (((S) == OpenSent) || ((S) == OpenConfirm) || ((S) == Established))
 
 /* Count prefix size from mask length */
 #define PSIZE(a) (((a) + 7) / (8))
@@ -814,6 +830,7 @@ enum bgp_clear_type
 #define BGP_ERR_NO_EBGP_MULTIHOP_WITH_TTLHACK	-30
 #define BGP_ERR_NO_IBGP_WITH_TTLHACK		-31
 #define BGP_ERR_MAX				-32
+#define BGP_ERR_CANNOT_HAVE_LOCAL_AS_SAME_AS_REMOTE_AS    -33
 
 extern struct bgp_master *bm;
 
@@ -843,7 +860,7 @@ extern struct peer *peer_create_accept (struct bgp *);
 extern char *peer_uptime (time_t, char *, size_t);
 extern int bgp_config_write (struct vty *);
 extern void bgp_config_write_family_header (struct vty *, afi_t, safi_t, int *);
-
+
 extern void bgp_master_init (void);
 
 extern void bgp_init (void);
@@ -941,7 +958,7 @@ extern int peer_distribute_unset (struct peer *, afi_t, safi_t, int);
 extern int peer_allowas_in_set (struct peer *, afi_t, safi_t, int);
 extern int peer_allowas_in_unset (struct peer *, afi_t, safi_t);
 
-extern int peer_local_as_set (struct peer *, as_t, int);
+extern int peer_local_as_set (struct peer *, as_t, int, int);
 extern int peer_local_as_unset (struct peer *);
 
 extern int peer_prefix_list_set (struct peer *, afi_t, safi_t, int, const char *);

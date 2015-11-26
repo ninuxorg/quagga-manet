@@ -149,8 +149,8 @@ struct vty
 #define PRINTF_ATTRIBUTE(a,b)
 #endif /* __GNUC__ */
 
-/* Utility macros to convert VTY argument to unsigned long or integer. */
-#define VTY_GET_LONG(NAME,V,STR) \
+/* Utility macros to convert VTY argument to unsigned long */
+#define VTY_GET_ULONG(NAME,V,STR) \
 do { \
   char *endptr = NULL; \
   errno = 0; \
@@ -162,20 +162,38 @@ do { \
     } \
 } while (0)
 
-#define VTY_GET_INTEGER_RANGE(NAME,V,STR,MIN,MAX) \
-do { \
-  unsigned long tmpl; \
-  VTY_GET_LONG(NAME, tmpl, STR); \
-  if ( (tmpl < (MIN)) || (tmpl > (MAX))) \
-    { \
-      vty_out (vty, "%% Invalid %s value%s", NAME, VTY_NEWLINE); \
-      return CMD_WARNING; \
-    } \
-  (V) = tmpl; \
+/*
+ * The logic below ((TMPL) <= ((MIN) && (TMPL) != (MIN)) is
+ * done to circumvent the compiler complaining about
+ * comparing unsigned numbers against zero, if MIN is zero.
+ * NB: The compiler isn't smart enough to supress the warning
+ * if you write (MIN) != 0 && tmpl < (MIN).
+ */
+#define VTY_GET_INTEGER_RANGE_HEART(NAME,TMPL,STR,MIN,MAX)      \
+do {                                                            \
+  VTY_GET_ULONG(NAME, (TMPL), STR);                             \
+  if ( ((TMPL) <= (MIN) && (TMPL) != (MIN)) || (TMPL) > (MAX) ) \
+    {                                                           \
+      vty_out (vty, "%% Invalid %s value%s", NAME, VTY_NEWLINE);\
+      return CMD_WARNING;                                       \
+    }                                                           \
 } while (0)
 
-#define VTY_GET_INTEGER(NAME,V,STR) \
-  VTY_GET_INTEGER_RANGE(NAME,V,STR,0U,UINT32_MAX)
+#define VTY_GET_INTEGER_RANGE(NAME,V,STR,MIN,MAX)               \
+do {                                                            \
+  unsigned long tmpl;                                           \
+  VTY_GET_INTEGER_RANGE_HEART(NAME,tmpl,STR,MIN,MAX);           \
+  (V) = tmpl;                                                   \
+} while (0)
+
+#define VTY_CHECK_INTEGER_RANGE(NAME,STR,MIN,MAX)               \
+do {                                                            \
+  unsigned long tmpl;                                           \
+  VTY_GET_INTEGER_RANGE_HEART(NAME,tmpl,STR,MIN,MAX);           \
+} while (0)
+
+#define VTY_GET_INTEGER(NAME,V,STR)                             \
+    VTY_GET_INTEGER_RANGE(NAME,V,STR,0U,UINT32_MAX)
 
 #define VTY_GET_IPV4_ADDRESS(NAME,V,STR)                                      \
 do {                                                                             \
@@ -197,6 +215,14 @@ do {                                                                            
       vty_out (vty, "%% Invalid %s value%s", NAME, VTY_NEWLINE);              \
       return CMD_WARNING;                                                     \
     }                                                                         \
+} while (0)
+
+#define VTY_WARN_EXPERIMENTAL()                                               \
+do {                                                                          \
+  vty_out (vty, "%% WARNING: this command is experimental. Both its name and" \
+                " parameters may%s%% change in a future version of Quagga,"   \
+                " possibly breaking your configuration!%s",                   \
+                VTY_NEWLINE, VTY_NEWLINE);                                    \
 } while (0)
 
 /* Exported variables */
@@ -224,6 +250,6 @@ extern void vty_hello (struct vty *);
 
 /* Send a fixed-size message to all vty terminal monitors; this should be
    an async-signal-safe function. */
-extern void vty_log_fixed (const char *buf, size_t len);
+extern void vty_log_fixed (char *buf, size_t len);
 
 #endif /* _ZEBRA_VTY_H */

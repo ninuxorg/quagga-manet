@@ -365,7 +365,7 @@ spftree_area_del (struct isis_area *area)
       area->spftree[1] = NULL;
     }
 #ifdef HAVE_IPV6
-    if (area->spftree[1] != NULL)
+    if (area->spftree6[1] != NULL)
     {
       isis_spftree_del (area->spftree6[1]);
       area->spftree6[1] = NULL;
@@ -833,7 +833,7 @@ lspfragloop:
     {
       assert (ip6reach->prefix_len <= IPV6_MAX_BITLEN);
 
-      dist = cost + ip6reach->metric;
+      dist = cost + ntohl(ip6reach->metric);
       vtype = (ip6reach->control_info & CTRL_INFO_DISTRIBUTION) ?
         VTYPE_IP6REACH_EXTERNAL : VTYPE_IP6REACH_INTERNAL;
       prefix.prefixlen = ip6reach->prefix_len;
@@ -1492,7 +1492,7 @@ isis_print_paths (struct vty *vty, struct list *paths, u_char *root_sysid)
   struct listnode *anode;
   struct isis_vertex *vertex;
   struct isis_adjacency *adj;
-  u_char buff[255];
+  u_char buff[BUFSIZ];
 
   vty_out (vty, "Vertex               Type         Metric "
                 "Next-Hop             Interface Parent%s", VTY_NEWLINE);

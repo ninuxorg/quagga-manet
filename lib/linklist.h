@@ -68,6 +68,7 @@ extern void list_free (struct list *);
 extern void listnode_add (struct list *, void *);
 extern void listnode_add_sort (struct list *, void *);
 extern void listnode_add_after (struct list *, struct listnode *, void *);
+extern void listnode_move_to_tail (struct list *, struct listnode *);
 extern void listnode_delete (struct list *, void *);
 extern struct listnode *listnode_lookup (struct list *, void *);
 extern void *listnode_head (struct list *);
@@ -90,7 +91,7 @@ extern void list_add_list (struct list *, struct list *);
 #define ALL_LIST_ELEMENTS(list,node,nextnode,data) \
   (node) = listhead(list), ((data) = NULL); \
   (node) != NULL && \
-    ((data) = listgetdata(node),(nextnode) = listnextnode(node), 1); \
+    ((data) = listgetdata(node),(nextnode) = node->next, 1); \
   (node) = (nextnode), ((data) = NULL)
 
 /* read-only list iteration macro.
@@ -112,6 +113,7 @@ extern void list_add_list (struct list *, struct list *);
 #define LISTNODE_ATTACH(L,N) \
   do { \
     (N)->prev = (L)->tail; \
+    (N)->next = NULL; \
     if ((L)->head == NULL) \
       (L)->head = (N); \
     else \
